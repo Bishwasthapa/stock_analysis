@@ -187,20 +187,23 @@ class TrendDetector:
 
         # Decide final trend/role per swing:
         # - if never in a pattern -> NONE, -1
-        # - if appears as non-zero role in any pattern -> keep first non-zero role
-        # - if appears only as role 0 -> keep role 0 with its trend direction
+        # - if appears as both role 0 and any non-zero role, treat as intersecting
+        #   start and continuation -> keep non-zero role (NOT OUT)
+        # - if appears only as role 0 -> keep role 0 (OUT)
+        # - else keep non-zero role
         for swing in swings:
             entries = membership.get(swing.index, [])
             if not entries:
                 classification[swing.index] = ('NONE', -1)
                 continue
 
+            zero_entries = [e for e in entries if e[1] == 0]
             nonzero_entries = [e for e in entries if e[1] > 0]
             if nonzero_entries:
                 trend_type, role = nonzero_entries[0]
                 classification[swing.index] = (trend_type, role)
-            else:
-                trend_type, _ = entries[0]
+            elif zero_entries:
+                trend_type, _ = zero_entries[0]
                 classification[swing.index] = (trend_type, 0)
         
         return classification, sequences_list
@@ -219,31 +222,24 @@ class PatternClassifier:
         point_label values:
           - IN_UP / IN_DOWN: role 1,2,3 in an up/down valid trend
           - OUT_UP / OUT_DOWN: role 0 of an up/down valid trend
-          - INVALID: red point not part of any valid 0-1-2-3 trend
+          - unlabeled: not part of any valid 0-1-2-3 trend
         """
         classification: Dict[int, Tuple[str, Optional[int], str, str]] = {}
         
         for swing in swings:
-            if swing.index in trends:
-                trend_type, role = trends[swing.index]
-                if role in (1, 2, 3):
-                    if trend_type == 'UPTREND':
-                        classification[swing.index] = ('IN', role, trend_type, 'IN_UP')
-                    elif trend_type == 'DOWNTREND':
-                        classification[swing.index] = ('IN', role, trend_type, 'IN_DOWN')
-                    else:
-                        classification[swing.index] = ('INVALID', None, 'NONE', 'INVALID')
-                elif role == 0:
-                    if trend_type == 'UPTREND':
-                        classification[swing.index] = ('OUT', 0, trend_type, 'OUT_UP')
-                    elif trend_type == 'DOWNTREND':
-                        classification[swing.index] = ('OUT', 0, trend_type, 'OUT_DOWN')
-                    else:
-                        classification[swing.index] = ('INVALID', None, 'NONE', 'INVALID')
-                else:
-                    classification[swing.index] = ('INVALID', None, 'NONE', 'INVALID')
-            else:
-                classification[swing.index] = ('INVALID', None, 'NONE', 'INVALID')
+            if swing.index not in trends:
+                continue
+            trend_type, role = trends[swing.index]
+            if role in (1, 2, 3):
+                if trend_type == 'UPTREND':
+                    classification[swing.index] = ('IN', role, trend_type, 'IN_UP')
+                elif trend_type == 'DOWNTREND':
+                    classification[swing.index] = ('IN', role, trend_type, 'IN_DOWN')
+            elif role == 0:
+                if trend_type == 'UPTREND':
+                    classification[swing.index] = ('OUT', 0, trend_type, 'OUT_UP')
+                elif trend_type == 'DOWNTREND':
+                    classification[swing.index] = ('OUT', 0, trend_type, 'OUT_DOWN')
         
         return classification
 
@@ -262,9 +258,9 @@ class ResultExporter:
             if swing.index in classification:
                 cls, role, trend_type, point_label = classification[swing.index]
             else:
-                cls, role, trend_type, point_label = 'INVALID', None, 'NONE', 'INVALID'
+                cls, role, trend_type, point_label = '', None, '', ''
             
-            role_str = str(role) if role is not None and role >= 0 else 'NONE'
+            role_str = str(role) if role is not None and role >= 0 else ''
             
             results.append({
                 'index': swing.index,
@@ -284,7 +280,7 @@ class ResultExporter:
         # Print summary
         in_count = (df['classification'] == 'IN').sum()
         out_count = (df['classification'] == 'OUT').sum()
-        invalid_count = (df['classification'] == 'INVALID').sum()
+        unlabeled_count = (df['classification'] == '').sum()
         in_up_count = (df['point_label'] == 'IN_UP').sum()
         in_down_count = (df['point_label'] == 'IN_DOWN').sum()
         out_up_count = (df['point_label'] == 'OUT_UP').sum()
@@ -292,7 +288,7 @@ class ResultExporter:
         print(f"\nSummary:")
         print(f"  IN points: {in_count}")
         print(f"  OUT points: {out_count}")
-        print(f"  INVALID points: {invalid_count}")
+        print(f"  Unlabeled points: {unlabeled_count}")
         print(f"  IN_UP: {in_up_count}")
         print(f"  IN_DOWN: {in_down_count}")
         print(f"  OUT_UP: {out_up_count}")
@@ -331,9 +327,9 @@ class ResultExporter:
             if swing.index in classification:
                 cls, role, trend_type, point_label = classification[swing.index]
             else:
-                cls, role, trend_type, point_label = 'INVALID', None, 'NONE', 'INVALID'
+                cls, role, trend_type, point_label = '', None, '', ''
             
-            if cls in ('OUT', 'INVALID'):
+            if cls == 'OUT':
                 # OUT points: red dot, no label
                 ax.scatter(x_date, swing.price, color='red', s=200, zorder=5, alpha=0.7)
                 # Date label at crossover point
@@ -346,6 +342,17 @@ class ResultExporter:
                     va='top',
                     color='darkred',
                     alpha=0.8,
+                )
+            elif cls == '':
+                # Unlabeled/invalid points: lighter red to distinguish from true OUT(0) points.
+                ax.scatter(
+                    x_date,
+                    swing.price,
+                    color='lightcoral',
+                    s=120,
+                    marker='x',
+                    zorder=4,
+                    alpha=0.65,
                 )
             else:
                 # IN points: label with role 1/2/3 and trend direction color
@@ -378,7 +385,8 @@ class ResultExporter:
         legend_elements = [
             Patch(facecolor='green', edgecolor='black', label='IN_UP (role 1/2/3 in uptrend)'),
             Patch(facecolor='dodgerblue', edgecolor='black', label='IN_DOWN (role 1/2/3 in downtrend)'),
-            Patch(facecolor='red', label='OUT_UP / OUT_DOWN / INVALID')
+            Patch(facecolor='red', label='OUT_UP / OUT_DOWN'),
+            Patch(facecolor='lightcoral', label='Unlabeled / Invalid')
         ]
         ax.legend(handles=legend_elements, loc='best', fontsize=12)
         

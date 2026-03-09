@@ -14,7 +14,14 @@ Outputs (CSV):
   - transition_easy_patterns.csv
   - transition_easy_patterns.txt
   - transition_clean_prev2_to_next.csv
+  - transition_clean_prev2_to_swing.csv
   - transition_clean_prev2_to_next.txt
+  - transition_clean_prev2_to_swing.txt
+  - transition_clean_prev2_priority.csv
+  - transition_clean_prev2_confirmed.csv
+  - transition_confirmed_examples.csv
+  - transition_clean_prev2_priority.txt
+  - transition_clean_prev2_confirmed.txt
 """
 
 from __future__ import annotations
@@ -22,6 +29,7 @@ from __future__ import annotations
 import argparse
 import csv
 import math
+from datetime import datetime
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence, Tuple
@@ -72,12 +80,27 @@ def write_csv(path: Path, fieldnames: Sequence[str], rows: Iterable[dict]) -> No
             writer.writerow(row)
 
 
+def _parse_role(value: str) -> int:
+    try:
+        return int(str(value).strip())
+    except Exception:
+        return -1
+
+
+def _date_label(value: str) -> str:
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%d").strftime("%d %b %Y")
+    except Exception:
+        return str(value)
+
+
 def analyze(
     rows: List[dict],
     out_dir: Path,
     split_ratio: float,
     min_context_count: int,
     stable_threshold: float,
+    strong_swing_min_move_pct: float,
 ) -> Dict[str, int]:
     tokens = [r["point_label"] for r in rows]
     dates = [r.get("date", "") for r in rows]
@@ -293,27 +316,61 @@ def analyze(
                 f"| count={r['count']} | {r['strength']}\n"
             )
 
-    # 6) Clean combination table:
-    #    prev2 in {IN_UP, IN_DOWN, OUT_UP, OUT_DOWN} -> next in same set
+    # 6) Clean combination tables:
+    #    Inputs must be valid pattern labels only.
+    #    If immediate next label is INVALID, skip forward to the next valid label.
+    #    We output both:
+    #      A) prev2 -> next valid pattern
+    #      B) prev2 -> swing result of that resolved next event (SWING_HIGH/SWING_LOW)
     keep_tokens = {"IN_UP", "IN_DOWN", "OUT_UP", "OUT_DOWN"}
+    labels = [r.get("point_label", "") for r in rows]
+    swing_types = [str(r.get("type", "")).upper() for r in rows]
+    trend_types = [str(r.get("trend_type", "")).upper() for r in rows]
+    roles = [_parse_role(str(r.get("pattern_role", ""))) for r in rows]
+    row_dates = [str(r.get("date", "")) for r in rows]
+
+    clean_next_counter: Dict[Context, Counter] = defaultdict(Counter)
+    clean_swing_counter: Dict[Context, Counter] = defaultdict(Counter)
+
+    for i in range(2, len(labels)):
+        a = labels[i - 2]
+        b = labels[i - 1]
+        if a not in keep_tokens or b not in keep_tokens:
+            continue
+
+        j = i
+        while j < len(labels) and labels[j] not in keep_tokens:
+            j += 1
+        if j >= len(labels):
+            continue
+
+        nxt = labels[j]
+        clean_next_counter[(a, b)][nxt] += 1
+
+        st = swing_types[j]
+        if st == "HIGH":
+            swing_label = "SWING_HIGH"
+        elif st == "LOW":
+            swing_label = "SWING_LOW"
+        else:
+            swing_label = "SWING_UNKNOWN"
+        clean_swing_counter[(a, b)][swing_label] += 1
+
     clean_full_rows = []
     grouped = defaultdict(list)
-
-    for row in full_rows:
-        prev_2 = row["prev_2"]
-        nxt = row["next"]
-        left, right = prev_2.split("|")
-        if left in keep_tokens and right in keep_tokens and nxt in keep_tokens:
+    for (a, b), cnts in sorted(clean_next_counter.items()):
+        total_ctx = sum(cnts.values())
+        for nxt, cnt in sorted(cnts.items(), key=lambda x: (-x[1], x[0])):
             clean_row = {
-                "prev_2_a": left,
-                "prev_2_b": right,
+                "prev_2_a": a,
+                "prev_2_b": b,
                 "next": nxt,
-                "count": row["count"],
-                "total_context_count": row["total_context_count"],
-                "prob_next_given_prev2": row["prob_next_given_prev2"],
+                "count": cnt,
+                "total_context_count": total_ctx,
+                "prob_next_given_prev2": f"{(cnt / total_ctx):.4f}",
             }
             clean_full_rows.append(clean_row)
-            grouped[(left, right)].append(clean_row)
+            grouped[(a, b)].append(clean_row)
 
     clean_full_rows.sort(
         key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["next"])
@@ -333,7 +390,7 @@ def analyze(
 
     clean_txt = out_dir / "transition_clean_prev2_to_next.txt"
     with clean_txt.open("w", encoding="utf-8") as f:
-        f.write("Clean Prev2 -> Next combinations\n\n")
+        f.write("Clean Prev2 -> Next combinations (valid inputs only, INVALID skipped)\n\n")
         for key in sorted(grouped.keys()):
             left, right = key
             f.write(f"{left} + {right}:\n")
@@ -342,6 +399,278 @@ def analyze(
                 f.write(
                     f"  -> {row['next']} | count={row['count']}/{row['total_context_count']} "
                     f"({p:.2f}%)\n"
+                )
+            f.write("\n")
+
+    clean_swing_rows = []
+    grouped_swing = defaultdict(list)
+    for (a, b), cnts in sorted(clean_swing_counter.items()):
+        total_ctx = sum(cnts.values())
+        for swing_label, cnt in sorted(cnts.items(), key=lambda x: (-x[1], x[0])):
+            row = {
+                "prev_2_a": a,
+                "prev_2_b": b,
+                "swing_result": swing_label,
+                "count": cnt,
+                "total_context_count": total_ctx,
+                "prob_swing_given_prev2": f"{(cnt / total_ctx):.4f}",
+            }
+            clean_swing_rows.append(row)
+            grouped_swing[(a, b)].append(row)
+
+    clean_swing_rows.sort(
+        key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["swing_result"])
+    )
+    write_csv(
+        out_dir / "transition_clean_prev2_to_swing.csv",
+        [
+            "prev_2_a",
+            "prev_2_b",
+            "swing_result",
+            "count",
+            "total_context_count",
+            "prob_swing_given_prev2",
+        ],
+        clean_swing_rows,
+    )
+
+    clean_swing_txt = out_dir / "transition_clean_prev2_to_swing.txt"
+    with clean_swing_txt.open("w", encoding="utf-8") as f:
+        f.write("Clean Prev2 -> Swing combinations (valid inputs only, INVALID skipped)\n\n")
+        for key in sorted(grouped_swing.keys()):
+            left, right = key
+            f.write(f"{left} + {right}:\n")
+            for row in sorted(grouped_swing[key], key=lambda x: (-int(x["count"]), x["swing_result"])):
+                p = float(row["prob_swing_given_prev2"]) * 100
+                f.write(
+                    f"  -> {row['swing_result']} | count={row['count']}/{row['total_context_count']} "
+                    f"({p:.2f}%)\n"
+                )
+            f.write("\n")
+
+    # 6B) Confirmed 4-point completion table:
+    # Count prev2 -> next only when the "next" event can be traced to role 3
+    # in the same trend context (0/1/2/3 completion requirement).
+    def completion_index_for(start_idx: int) -> int:
+        role0 = roles[start_idx]
+        if role0 < 0:
+            return -1
+        if role0 == 3:
+            return start_idx
+        trend0 = trend_types[start_idx]
+        needed = role0 + 1
+        for k in range(start_idx + 1, len(rows)):
+            if trend_types[k] != trend0:
+                continue
+            rk = roles[k]
+            if rk == needed:
+                if rk == 3:
+                    return k
+                needed += 1
+                continue
+            if rk > needed:
+                return -1
+        return -1
+
+    confirmed_counter: Dict[Context, Counter] = defaultdict(Counter)
+    confirmed_examples: List[dict] = []
+    for i in range(2, len(labels)):
+        a = labels[i - 2]
+        b = labels[i - 1]
+        if a not in keep_tokens or b not in keep_tokens:
+            continue
+
+        # same "resolved next valid pattern" logic used by clean table
+        j = i
+        while j < len(labels) and labels[j] not in keep_tokens:
+            j += 1
+        if j >= len(labels):
+            continue
+        nxt = labels[j]
+
+        comp_j = completion_index_for(j)
+        if comp_j < 0:
+            continue
+
+        confirmed_counter[(a, b)][nxt] += 1
+        confirmed_examples.append(
+            {
+                "prev_2_a": a,
+                "prev_2_b": b,
+                "next": nxt,
+                "date_prev_2_a": row_dates[i - 2],
+                "date_prev_2_b": row_dates[i - 1],
+                "date_next": row_dates[j],
+                "date_completion": row_dates[comp_j],
+                "date_prev_2_a_label": _date_label(row_dates[i - 2]),
+                "date_prev_2_b_label": _date_label(row_dates[i - 1]),
+                "date_next_label": _date_label(row_dates[j]),
+                "date_completion_label": _date_label(row_dates[comp_j]),
+                "next_role": roles[j],
+                "completion_role": roles[comp_j],
+            }
+        )
+
+    confirmed_rows = []
+    confirmed_grouped = defaultdict(list)
+    for (a, b), cnts in sorted(confirmed_counter.items()):
+        total_ctx = sum(cnts.values())
+        for nxt, cnt in sorted(cnts.items(), key=lambda x: (-x[1], x[0])):
+            row = {
+                "prev_2_a": a,
+                "prev_2_b": b,
+                "next": nxt,
+                "count": cnt,
+                "total_context_count": total_ctx,
+                "prob_next_given_prev2_confirmed": f"{(cnt / total_ctx):.4f}",
+            }
+            confirmed_rows.append(row)
+            confirmed_grouped[(a, b)].append(row)
+
+    confirmed_rows.sort(
+        key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["next"])
+    )
+    write_csv(
+        out_dir / "transition_clean_prev2_confirmed.csv",
+        [
+            "prev_2_a",
+            "prev_2_b",
+            "next",
+            "count",
+            "total_context_count",
+            "prob_next_given_prev2_confirmed",
+        ],
+        confirmed_rows,
+    )
+    write_csv(
+        out_dir / "transition_confirmed_examples.csv",
+        [
+            "prev_2_a",
+            "prev_2_b",
+            "next",
+            "date_prev_2_a",
+            "date_prev_2_b",
+            "date_next",
+            "date_completion",
+            "date_prev_2_a_label",
+            "date_prev_2_b_label",
+            "date_next_label",
+            "date_completion_label",
+            "next_role",
+            "completion_role",
+        ],
+        confirmed_examples,
+    )
+
+    confirmed_txt = out_dir / "transition_clean_prev2_confirmed.txt"
+    with confirmed_txt.open("w", encoding="utf-8") as f:
+        f.write("Confirmed Prev2 -> Next combinations (requires 4-point completion)\n\n")
+        for key in sorted(confirmed_grouped.keys()):
+            left, right = key
+            f.write(f"{left} + {right}:\n")
+            for row in sorted(confirmed_grouped[key], key=lambda x: (-int(x["count"]), x["next"])):
+                p = float(row["prob_next_given_prev2_confirmed"]) * 100
+                f.write(
+                    f"  -> {row['next']} | count={row['count']}/{row['total_context_count']} "
+                    f"({p:.2f}%)\n"
+                )
+            f.write("\n")
+
+    # 7) Priority output:
+    #    prev2 inputs are valid patterns only.
+    #    Priority:
+    #      - if immediate next is valid pattern -> use that
+    #      - else if immediate next is strong swing -> use SWING_HIGH/LOW
+    #      - else -> no actionable signal
+    prices = []
+    for r in rows:
+        try:
+            prices.append(float(r.get("price", "")))
+        except Exception:
+            prices.append(float("nan"))
+
+    priority_counter: Dict[Context, Counter] = defaultdict(Counter)
+    for i in range(2, len(labels)):
+        a = labels[i - 2]
+        b = labels[i - 1]
+        if a not in keep_tokens or b not in keep_tokens:
+            continue
+
+        nxt_label = labels[i]
+        if nxt_label in keep_tokens:
+            priority_counter[(a, b)][nxt_label] += 1
+            continue
+
+        # Fallback: immediate strong swing only.
+        if i - 1 < 0:
+            continue
+        p_prev = prices[i - 1]
+        p_now = prices[i]
+        if math.isnan(p_prev) or math.isnan(p_now) or p_prev == 0:
+            continue
+        move_pct = abs((p_now - p_prev) / p_prev) * 100.0
+        if move_pct < strong_swing_min_move_pct:
+            continue
+
+        st = swing_types[i]
+        if st == "HIGH":
+            priority_counter[(a, b)]["SWING_HIGH"] += 1
+        elif st == "LOW":
+            priority_counter[(a, b)]["SWING_LOW"] += 1
+
+    priority_rows = []
+    priority_grouped = defaultdict(list)
+    for (a, b), cnts in sorted(priority_counter.items()):
+        total_ctx = sum(cnts.values())
+        for target, cnt in sorted(cnts.items(), key=lambda x: (-x[1], x[0])):
+            signal_type = "PATTERN" if target in keep_tokens else "SWING"
+            row = {
+                "prev_2_a": a,
+                "prev_2_b": b,
+                "next_signal": target,
+                "signal_type": signal_type,
+                "count": cnt,
+                "total_context_count": total_ctx,
+                "prob_signal_given_prev2": f"{(cnt / total_ctx):.4f}",
+            }
+            priority_rows.append(row)
+            priority_grouped[(a, b)].append(row)
+
+    priority_rows.sort(
+        key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["next_signal"])
+    )
+    write_csv(
+        out_dir / "transition_clean_prev2_priority.csv",
+        [
+            "prev_2_a",
+            "prev_2_b",
+            "next_signal",
+            "signal_type",
+            "count",
+            "total_context_count",
+            "prob_signal_given_prev2",
+        ],
+        priority_rows,
+    )
+
+    priority_txt = out_dir / "transition_clean_prev2_priority.txt"
+    with priority_txt.open("w", encoding="utf-8") as f:
+        f.write(
+            "Priority Prev2 -> Next signal "
+            "(pattern first; else immediate strong swing fallback)\n"
+        )
+        f.write(f"Strong swing threshold: abs move >= {strong_swing_min_move_pct:.2f}%\n\n")
+        for key in sorted(priority_grouped.keys()):
+            left, right = key
+            f.write(f"{left} + {right}:\n")
+            for row in sorted(
+                priority_grouped[key],
+                key=lambda x: (-int(x["count"]), x["next_signal"]),
+            ):
+                p = float(row["prob_signal_given_prev2"]) * 100
+                f.write(
+                    f"  -> {row['next_signal']} [{row['signal_type']}] | "
+                    f"count={row['count']}/{row['total_context_count']} ({p:.2f}%)\n"
                 )
             f.write("\n")
 
@@ -391,6 +720,15 @@ def main() -> None:
         default=0.60,
         help="Top-next probability threshold for stable context (default: 0.60)",
     )
+    parser.add_argument(
+        "--strong-swing-min-move-pct",
+        type=float,
+        default=4.0,
+        help=(
+            "Immediate fallback swing threshold in percent move from previous point "
+            "(default: 4.0)"
+        ),
+    )
     args = parser.parse_args()
 
     symbol = args.symbol.upper()
@@ -410,6 +748,7 @@ def main() -> None:
         split_ratio=args.split_ratio,
         min_context_count=args.min_context_count,
         stable_threshold=args.stable_threshold,
+        strong_swing_min_move_pct=args.strong_swing_min_move_pct,
     )
 
     print("\nTransition Pattern Analysis Complete")
@@ -434,6 +773,13 @@ def main() -> None:
     print(f"  - {output_dir / 'transition_easy_patterns.txt'}")
     print(f"  - {output_dir / 'transition_clean_prev2_to_next.csv'}")
     print(f"  - {output_dir / 'transition_clean_prev2_to_next.txt'}")
+    print(f"  - {output_dir / 'transition_clean_prev2_to_swing.csv'}")
+    print(f"  - {output_dir / 'transition_clean_prev2_to_swing.txt'}")
+    print(f"  - {output_dir / 'transition_clean_prev2_priority.csv'}")
+    print(f"  - {output_dir / 'transition_clean_prev2_priority.txt'}")
+    print(f"  - {output_dir / 'transition_clean_prev2_confirmed.csv'}")
+    print(f"  - {output_dir / 'transition_clean_prev2_confirmed.txt'}")
+    print(f"  - {output_dir / 'transition_confirmed_examples.csv'}")
 
 
 if __name__ == "__main__":

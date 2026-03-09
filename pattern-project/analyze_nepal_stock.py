@@ -359,65 +359,117 @@ def detect_swing_points(df: pd.DataFrame, window: int = 5) -> tuple:
 
 def extract_zigzag_points(df: pd.DataFrame) -> list:
     """
-    Extract meaningful highs and lows based on EMA crosses.
-    After a bullish cross, find the next significant high.
-    After a bearish cross, find the next significant low.
-    Returns a list of dicts with: index, date, price, type (high/low), cross_type (bull/bear)
+    Extract meaningful swing points anchored to EMA crossovers.
+
+    Rules implemented:
+    - If there is at least one crossover, start with one INITIAL point from BEFORE
+      the first crossover:
+        first bullish crossover -> initial LOW before crossover
+        first bearish crossover -> initial HIGH before crossover
+    - Each crossover then gets exactly one assigned point in its FORWARD segment
+      [cross_i, cross_{i+1}) (or to end for last crossover).
+    - Swing type alternates globally:
+      HIGH -> LOW -> HIGH -> LOW ...
+      This keeps the zigzag consistent and avoids duplicate "jobs" per crossover.
+
+    Returns a list of dicts with:
+    - index, date, price
+    - type ('high'/'low')
+    - cross_type ('bull'/'bear') of the crossover owning that point
     """
     points = []
-    
-    # Find all cross indices
+
+    # Find all crossover rows
     crosses = df[df['ema_cross'] != 0].copy()
     if len(crosses) == 0:
         return points
-    
-    for idx, (cross_idx, cross_row) in enumerate(crosses.iterrows()):
-        cross_type = cross_row['ema_cross']  # 1 = bullish, -1 = bearish
-        
-        # Determine the next cross index
-        if idx < len(crosses) - 1:
-            next_cross_idx = crosses.index[idx + 1]
+
+    cross_positions = list(crosses.index)
+    # Skip startup crossovers that occur too early in the dataset; they often
+    # don't have enough pre-history to form a meaningful "before crossover" anchor.
+    min_pre_bars_for_seed = 20
+    while cross_positions and cross_positions[0] < min_pre_bars_for_seed:
+        cross_positions.pop(0)
+    if not cross_positions:
+        return points
+
+    def _nearest_local_extreme_before(end_idx: int, extreme_type: str) -> int | None:
+        """
+        Find nearest local extreme before end_idx.
+        extreme_type: 'high' or 'low'
+        Returns absolute df index or None if not found.
+        """
+        if end_idx <= 2:
+            return None
+        s = df['Close'].iloc[:end_idx]
+        # local high/low with 1-bar neighborhood
+        if extreme_type == 'high':
+            candidates = s[(s >= s.shift(1)) & (s > s.shift(-1))].index.tolist()
         else:
-            next_cross_idx = len(df) - 1
-        
-        # Extract the range between this cross and the next
-        range_start = cross_idx + 1
-        range_end = next_cross_idx
-        
-        if range_start >= len(df):
+            candidates = s[(s <= s.shift(1)) & (s < s.shift(-1))].index.tolist()
+        return int(candidates[-1]) if candidates else None
+
+    # 1) Initial anchor point from before first crossover.
+    first_cross_idx = cross_positions[0]
+    first_cross_val = int(df.loc[first_cross_idx, 'ema_cross'])
+    pre_window = df.iloc[0:first_cross_idx]
+    last_point_type = None
+    if len(pre_window) > 0:
+        # Direction-forced seed:
+        # bearish first crossover => start from pre-crossover HIGH
+        # bullish first crossover => start from pre-crossover LOW
+        initial_type = 'high' if first_cross_val == -1 else 'low'
+        init_idx = _nearest_local_extreme_before(first_cross_idx, initial_type)
+        if init_idx is None:
+            if initial_type == 'high':
+                init_idx = int(pre_window['Close'].idxmax())
+            else:
+                init_idx = int(pre_window['Close'].idxmin())
+        points.append({
+            'index': init_idx,
+            'date': df.loc[init_idx, 'Date'],
+            'price': float(df.loc[init_idx, 'Close']),
+            'type': initial_type,
+            'cross_type': 'seed',
+        })
+        last_point_type = initial_type
+
+    # 2) One point per crossover in forward segment.
+    for i, cross_idx in enumerate(cross_positions):
+        cross_val = int(df.loc[cross_idx, 'ema_cross'])  # 1 bull, -1 bear
+        left = cross_idx
+        if i < len(cross_positions) - 1:
+            right = cross_positions[i + 1] - 1
+        else:
+            right = len(df) - 1
+        if left > right:
             continue
-        
-        range_data = df.iloc[range_start:range_end + 1]
-        
-        if len(range_data) == 0:
+
+        window = df.iloc[left:right + 1]
+        if len(window) == 0:
             continue
-        
-        if cross_type == 1:  # Bullish cross -> find the high
-            max_idx = range_data['Close'].idxmax()
-            max_price = range_data.loc[max_idx, 'Close']
-            max_date = range_data.loc[max_idx, 'Date']
-            
-            points.append({
-                'index': max_idx,
-                'date': max_date,
-                'price': max_price,
-                'type': 'high',
-                'cross_type': 'bull'
-            })
-        
-        elif cross_type == -1:  # Bearish cross -> find the low
-            min_idx = range_data['Close'].idxmin()
-            min_price = range_data.loc[min_idx, 'Close']
-            min_date = range_data.loc[min_idx, 'Date']
-            
-            points.append({
-                'index': min_idx,
-                'date': min_date,
-                'price': min_price,
-                'type': 'low',
-                'cross_type': 'bear'
-            })
-    
+
+        # Alternate from previous chosen point.
+        if last_point_type is None:
+            # Fallback for edge case (no pre-window): use crossover direction.
+            target_type = 'high' if cross_val == 1 else 'low'
+        else:
+            target_type = 'low' if last_point_type == 'high' else 'high'
+
+        if target_type == 'high':
+            point_idx = window['Close'].idxmax()
+        else:
+            point_idx = window['Close'].idxmin()
+
+        points.append({
+            'index': int(point_idx),
+            'date': df.loc[point_idx, 'Date'],
+            'price': float(df.loc[point_idx, 'Close']),
+            'type': target_type,
+            'cross_type': 'bull' if cross_val == 1 else 'bear',
+        })
+        last_point_type = target_type
+
     return points
 
 
