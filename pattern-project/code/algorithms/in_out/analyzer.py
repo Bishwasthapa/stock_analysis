@@ -2,7 +2,7 @@
 Analyze repeating 2-token -> 1-token transition patterns from point-label output.
 
 Input:
-  stocks/nepal/<SYMBOL>/custom/csv/in_out_pattern_9_18.csv
+  results/nepal/<SYMBOL>/in_out/csv/in_out_pattern_9_18.csv
   (expects a `point_label` column from pattern_detector_v2.py)
 
 Outputs:
@@ -913,11 +913,11 @@ def main() -> None:
     parser.add_argument("symbol", help="Stock symbol, e.g. NICA")
     parser.add_argument(
         "--input-csv",
-        help="Path to labeled pattern CSV (default: stocks/nepal/<symbol>/custom/csv/in_out_pattern_9_18.csv)",
+        help="Path to labeled pattern CSV (default: results/nepal/<symbol>/in_out/csv/in_out_pattern_9_18.csv)",
     )
     parser.add_argument(
         "--output-dir",
-        help="Output directory (default: same custom folder as input)",
+        help="Output directory (default: same in_out folder as input)",
     )
     parser.add_argument(
         "--split-ratio",
@@ -949,7 +949,7 @@ def main() -> None:
     args = parser.parse_args()
 
     symbol = args.symbol.upper()
-    default_input = Path(f"stocks/nepal/{symbol}/custom/csv/in_out_pattern_9_18.csv")
+    default_input = Path(f"results/nepal/{symbol}/in_out/csv/in_out_pattern_9_18.csv")
     input_csv = Path(args.input_csv) if args.input_csv else default_input
     output_dir = (
         Path(args.output_dir)

@@ -54,7 +54,7 @@ def main() -> None:
     run_cmd([py, "code/algorithms/in_out/detector.py", symbol])
     run_cmd([py, "code/algorithms/in_out/analyzer.py", symbol])
     print(f"\n✓ Pattern pipeline complete for {symbol}")
-    print(f"  Results: stocks/nepal/{symbol}/custom/")
+    print(f"  Results: results/nepal/{symbol}/in_out/")
 
 
 if __name__ == "__main__":

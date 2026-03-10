@@ -1,0 +1,3 @@
+prev_2,total_context_count,top_next,top_next_count,top_next_prob,entropy,stability,score_count_x_prob
+IN_DOWN|IN_DOWN,15,IN_DOWN,10,0.6667,1.4256,STABLE,10.0000
+IN_UP|IN_UP,9,IN_UP,5,0.5556,1.6577,UNSTABLE,5.0000

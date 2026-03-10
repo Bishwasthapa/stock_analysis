@@ -493,8 +493,8 @@ if __name__ == '__main__':
     symbol = sys.argv[1]
     
     # Default paths
-    zigzag_csv = f'stocks/nepal/{symbol}/custom/csv/highs_lows_pattern_9_18.csv'
-    output_csv = f'stocks/nepal/{symbol}/custom/csv/in_out_pattern_9_18.csv'
+    zigzag_csv = f'results/nepal/{symbol}/in_out/csv/highs_lows_pattern_9_18.csv'
+    output_csv = f'results/nepal/{symbol}/in_out/csv/in_out_pattern_9_18.csv'
     
     # Override if provided
     if '--zigzag-csv' in sys.argv:
