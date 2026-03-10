@@ -80,6 +80,25 @@ Run from project root:
 ./venv/bin/python transition_pattern_analysis.py NICA
 ```
 
+#Bishwas
+### 5A. Core Workflow (Most Important)
+This is the key project flow: fetch/update CSV -> draw IN/OUT pattern -> compute immediate complete-pattern transitions.
+
+Copy-paste for any symbol:
+```bash
+SYMBOL=ACLBSL
+./venv/bin/python analyze_nepal_stock.py $SYMBOL --refresh auto
+./venv/bin/python pattern_detector_v2.py $SYMBOL
+./venv/bin/python transition_pattern_analysis.py $SYMBOL
+```
+
+Main outputs to inspect:
+- Raw/fetched CSV: `data/nepal/<SYMBOL>.csv`
+- IN/OUT labeled stream: `stocks/nepal/<SYMBOL>/results/in_out_pattern_9_18.csv`
+- IN/OUT chart: `stocks/nepal/<SYMBOL>/results/in_out_pattern_9_18_visualization.png`
+- Complete-pattern transition summary: `stocks/nepal/<SYMBOL>/results/pattern_transition_2to1.txt`
+- Transition examples with dates: `stocks/nepal/<SYMBOL>/results/pattern_transition_2to1_examples.csv`
+
 Note:
 - `analyze_nepal_stock.py` now auto-downloads NEPSE CSV to
   `data/nepal/<SYMBOL>.csv` if local file is missing.
@@ -116,6 +135,13 @@ What is automatic:
 Most human-friendly outputs:
 - `stocks/nepal/<SYMBOL>/results/transition_clean_prev2_to_next.txt`
   - grouped `prev2 -> next` combinations
+- `stocks/nepal/<SYMBOL>/results/transition_clean_prev2_priority.txt`
+  - pattern-first next signal with strong-swing fallback
+- `stocks/nepal/<SYMBOL>/results/transition_clean_prev2_confirmed.txt`
+  - `prev2 -> next` only when the next event confirms full 4-point completion
+- `stocks/nepal/<SYMBOL>/results/pattern_transition_2to1.txt`
+  - complete-pattern level transitions using immediate valid 4-point patterns:
+    `IN_UP/IN_DOWN + IN_UP/IN_DOWN -> next IN_UP/IN_DOWN`
 - `stocks/nepal/<SYMBOL>/results/transition_readable_report_clean.md`
   - easy summary without `INVALID`
 
@@ -124,6 +150,17 @@ Key input/output path flow:
 - Zigzag source for pattern detector: `stocks/nepal/<SYMBOL>/results/highs_lows_pattern_9_18.csv`
 - Labeled pattern stream: `stocks/nepal/<SYMBOL>/results/in_out_pattern_9_18.csv`
 - Combination report: `stocks/nepal/<SYMBOL>/results/transition_clean_prev2_to_next.txt`
+- Priority combo report: `stocks/nepal/<SYMBOL>/results/transition_clean_prev2_priority.txt`
+- Confirmed combo report: `stocks/nepal/<SYMBOL>/results/transition_clean_prev2_confirmed.txt`
+- Complete-pattern transition report: `stocks/nepal/<SYMBOL>/results/pattern_transition_2to1.txt`
+
+Pattern-level outputs from `transition_pattern_analysis.py`:
+- `pattern_completed_sequence.csv`
+  - ordered list of complete valid 4-point patterns
+- `pattern_transition_2to1.csv` / `.txt`
+  - immediate `Pattern1 + Pattern2 -> Pattern3` counts/probabilities
+- `pattern_transition_2to1_examples.csv`
+  - date ranges for each example transition in human-readable month labels
 
 If you already have `in_out_pattern_9_18.csv` and only want transition analysis:
 ```bash

@@ -22,6 +22,10 @@ Outputs (CSV):
   - transition_confirmed_examples.csv
   - transition_clean_prev2_priority.txt
   - transition_clean_prev2_confirmed.txt
+  - pattern_completed_sequence.csv
+  - pattern_transition_2to1.csv
+  - pattern_transition_2to1.txt
+  - pattern_transition_2to1_examples.csv
 """
 
 from __future__ import annotations
@@ -674,6 +678,196 @@ def analyze(
                 )
             f.write("\n")
 
+    # 8) Pattern-level transitions (immediate complete patterns only: 0,1,2,3)
+    #    Build valid patterns by scanning every immediate 4-point window.
+    #    Then transition uses adjacent valid patterns in scan order:
+    #    Pattern[i-2] + Pattern[i-1] -> Pattern[i]
+    completed_patterns: List[dict] = []
+    n = len(rows)
+    prices_num = []
+    types_norm = []
+    for r in rows:
+        try:
+            prices_num.append(float(r.get("price", "")))
+        except Exception:
+            prices_num.append(float("nan"))
+        types_norm.append(str(r.get("type", "")).upper())
+
+    def _is_valid_up(i0: int) -> bool:
+        i1, i2, i3 = i0 + 1, i0 + 2, i0 + 3
+        if any(math.isnan(prices_num[k]) for k in (i0, i1, i2, i3)):
+            return False
+        return (
+            types_norm[i0] == "LOW"
+            and types_norm[i1] == "HIGH"
+            and types_norm[i2] == "LOW"
+            and types_norm[i3] == "HIGH"
+            and prices_num[i2] > prices_num[i0]
+            and prices_num[i3] > prices_num[i1]
+        )
+
+    def _is_valid_down(i0: int) -> bool:
+        i1, i2, i3 = i0 + 1, i0 + 2, i0 + 3
+        if any(math.isnan(prices_num[k]) for k in (i0, i1, i2, i3)):
+            return False
+        return (
+            types_norm[i0] == "HIGH"
+            and types_norm[i1] == "LOW"
+            and types_norm[i2] == "HIGH"
+            and types_norm[i3] == "LOW"
+            and prices_num[i2] < prices_num[i0]
+            and prices_num[i3] < prices_num[i1]
+        )
+
+    for i in range(n - 3):
+        token = ""
+        trend = ""
+        if _is_valid_up(i):
+            token = "IN_UP"
+            trend = "UPTREND"
+        elif _is_valid_down(i):
+            token = "IN_DOWN"
+            trend = "DOWNTREND"
+        else:
+            continue
+
+        completed_patterns.append(
+            {
+                "pattern_token": token,
+                "trend_type": trend,
+                "idx_0": i,
+                "idx_1": i + 1,
+                "idx_2": i + 2,
+                "idx_3": i + 3,
+                "date_0": row_dates[i],
+                "date_1": row_dates[i + 1],
+                "date_2": row_dates[i + 2],
+                "date_3": row_dates[i + 3],
+                "date_0_label": _date_label(row_dates[i]),
+                "date_1_label": _date_label(row_dates[i + 1]),
+                "date_2_label": _date_label(row_dates[i + 2]),
+                "date_3_label": _date_label(row_dates[i + 3]),
+            }
+        )
+
+    completed_patterns.sort(key=lambda r: r["idx_0"])
+    write_csv(
+        out_dir / "pattern_completed_sequence.csv",
+        [
+            "pattern_token",
+            "trend_type",
+            "idx_0",
+            "idx_1",
+            "idx_2",
+            "idx_3",
+            "date_0",
+            "date_1",
+            "date_2",
+            "date_3",
+            "date_0_label",
+            "date_1_label",
+            "date_2_label",
+            "date_3_label",
+        ],
+        completed_patterns,
+    )
+
+    pat_tokens = [p["pattern_token"] for p in completed_patterns]
+    pat_counter: Dict[Context, Counter] = defaultdict(Counter)
+    pat_examples: List[dict] = []
+    for i in range(2, len(completed_patterns)):
+        a = completed_patterns[i - 2]
+        b = completed_patterns[i - 1]
+        c = completed_patterns[i]
+        ctx = (a["pattern_token"], b["pattern_token"])
+        pat_counter[ctx][c["pattern_token"]] += 1
+        pat_examples.append(
+            {
+                "prev_2_a": a["pattern_token"],
+                "prev_2_b": b["pattern_token"],
+                "next": c["pattern_token"],
+                "a_date_0": a["date_0"],
+                "a_date_3": a["date_3"],
+                "b_date_0": b["date_0"],
+                "b_date_3": b["date_3"],
+                "c_date_0": c["date_0"],
+                "c_date_3": c["date_3"],
+                "a_date_0_label": a["date_0_label"],
+                "a_date_3_label": a["date_3_label"],
+                "b_date_0_label": b["date_0_label"],
+                "b_date_3_label": b["date_3_label"],
+                "c_date_0_label": c["date_0_label"],
+                "c_date_3_label": c["date_3_label"],
+            }
+        )
+
+    pat_rows = []
+    pat_grouped = defaultdict(list)
+    for (a, b), cnts in sorted(pat_counter.items()):
+        total_ctx = sum(cnts.values())
+        for nxt, cnt in sorted(cnts.items(), key=lambda x: (-x[1], x[0])):
+            row = {
+                "prev_2_a": a,
+                "prev_2_b": b,
+                "next": nxt,
+                "count": cnt,
+                "total_context_count": total_ctx,
+                "prob_next_pattern_given_prev2": f"{(cnt / total_ctx):.4f}",
+            }
+            pat_rows.append(row)
+            pat_grouped[(a, b)].append(row)
+
+    pat_rows.sort(
+        key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["next"])
+    )
+    write_csv(
+        out_dir / "pattern_transition_2to1.csv",
+        [
+            "prev_2_a",
+            "prev_2_b",
+            "next",
+            "count",
+            "total_context_count",
+            "prob_next_pattern_given_prev2",
+        ],
+        pat_rows,
+    )
+    write_csv(
+        out_dir / "pattern_transition_2to1_examples.csv",
+        [
+            "prev_2_a",
+            "prev_2_b",
+            "next",
+            "a_date_0",
+            "a_date_3",
+            "b_date_0",
+            "b_date_3",
+            "c_date_0",
+            "c_date_3",
+            "a_date_0_label",
+            "a_date_3_label",
+            "b_date_0_label",
+            "b_date_3_label",
+            "c_date_0_label",
+            "c_date_3_label",
+        ],
+        pat_examples,
+    )
+
+    pat_txt = out_dir / "pattern_transition_2to1.txt"
+    with pat_txt.open("w", encoding="utf-8") as f:
+        f.write("Pattern-level transitions (complete 0,1,2,3 patterns only)\n\n")
+        for key in sorted(pat_grouped.keys()):
+            left, right = key
+            f.write(f"{left} + {right}:\n")
+            for row in sorted(pat_grouped[key], key=lambda x: (-int(x["count"]), x["next"])):
+                p = float(row["prob_next_pattern_given_prev2"]) * 100
+                f.write(
+                    f"  -> {row['next']} | count={row['count']}/{row['total_context_count']} "
+                    f"({p:.2f}%)\n"
+                )
+            f.write("\n")
+
     stable_count = sum(1 for r in context_rows if r["stability"] == "STABLE")
     unstable_count = sum(1 for r in context_rows if r["stability"] == "UNSTABLE")
 
@@ -780,6 +974,10 @@ def main() -> None:
     print(f"  - {output_dir / 'transition_clean_prev2_confirmed.csv'}")
     print(f"  - {output_dir / 'transition_clean_prev2_confirmed.txt'}")
     print(f"  - {output_dir / 'transition_confirmed_examples.csv'}")
+    print(f"  - {output_dir / 'pattern_completed_sequence.csv'}")
+    print(f"  - {output_dir / 'pattern_transition_2to1.csv'}")
+    print(f"  - {output_dir / 'pattern_transition_2to1.txt'}")
+    print(f"  - {output_dir / 'pattern_transition_2to1_examples.csv'}")
 
 
 if __name__ == "__main__":

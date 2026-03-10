@@ -509,15 +509,22 @@ def plot_ema_chart(df: pd.DataFrame, symbol: str, short_span: int = 9, long_span
     return fig
 
 
-def plot_highs_lows_after_cross(df: pd.DataFrame, symbol: str, short_span: int = 9, long_span: int = 18) -> None:
+def plot_highs_lows_after_cross(
+    df: pd.DataFrame,
+    symbol: str,
+    short_span: int = 9,
+    long_span: int = 18,
+    points: list | None = None,
+) -> None:
     """
     Plot a simplified chart showing significant highs and lows tied to EMA crosses.
     This creates a zigzag pattern that ignores noise and focuses on meaningful price action.
     """
     fig, ax = plt.subplots(figsize=(24, 10))
     
-    # Extract the zigzag points based on EMA crosses
-    points = extract_zigzag_points(df)
+    # Use precomputed points when provided so chart and CSV use identical logic/output.
+    if points is None:
+        points = extract_zigzag_points(df)
     
     if len(points) == 0:
         print("  No zigzag points found")
@@ -640,15 +647,15 @@ if __name__ == '__main__':
         print(f"Calculating {short_span}/{long_span} EMA crossovers...")
         df = calculate_ema_cross(df, short_span, long_span)
         
+        # Compute once, then reuse everywhere.
+        points = extract_zigzag_points(df)
+        points_sorted = sorted(points, key=lambda p: p['index'])
+
         print("Generating chart...")
         fig = plot_ema_chart(df, symbol, short_span, long_span)
         
         print("Generating highs/lows chart...")
-        fig_hl = plot_highs_lows_after_cross(df, symbol, short_span, long_span)
-        
-        # Extract zigzag points for saving
-        points = extract_zigzag_points(df)
-        points_sorted = sorted(points, key=lambda p: p['index'])
+        fig_hl = plot_highs_lows_after_cross(df, symbol, short_span, long_span, points=points_sorted)
         
         print(f"Saving results to {output_dir}...")
         save_results(df, fig, symbol, output_dir, short_span, long_span, points=points_sorted)
