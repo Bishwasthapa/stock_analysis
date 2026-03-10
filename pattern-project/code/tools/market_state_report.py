@@ -2,9 +2,9 @@
 Build a concise market-state report from existing pattern outputs.
 
 For each symbol, it reads:
-  - stocks/nepal/<SYMBOL>/results/csv/in_out_pattern_9_18.csv
-  - stocks/nepal/<SYMBOL>/results/csv/transition_clean_prev2_to_next.csv
-  - stocks/nepal/<SYMBOL>/results/csv/transition_train_recent_validation.csv
+  - stocks/nepal/<SYMBOL>/custom/csv/in_out_pattern_9_18.csv
+  - stocks/nepal/<SYMBOL>/custom/csv/transition_clean_prev2_to_next.csv
+  - stocks/nepal/<SYMBOL>/custom/csv/transition_train_recent_validation.csv
 
 And outputs:
   - latest clean 2-state combo
@@ -77,7 +77,7 @@ def drift_status(validation_rows: List[dict], prev2: Tuple[str, str]) -> str:
 
 
 def symbol_report(symbol: str, base_dir: Path) -> dict:
-    results_dir = base_dir / symbol / "results"
+    results_dir = base_dir / symbol / "custom"
     inout_rows = read_csv(results_dir / "csv" / "in_out_pattern_9_18.csv")
     clean_rows = read_csv(results_dir / "csv" / "transition_clean_prev2_to_next.csv")
     validation_rows = read_csv(results_dir / "csv" / "transition_train_recent_validation.csv")

@@ -8,7 +8,7 @@ Given a symbol, this script:
 4. Exports clean CSV + markdown summary.
 
 Output directory:
-  stocks/nepal/<SYMBOL>/results/nearest_history_match/
+  stocks/nepal/<SYMBOL>/generic/nearest_history_match/
 """
 
 from __future__ import annotations
@@ -353,7 +353,7 @@ def main() -> None:
 
     symbol = args.symbol.upper()
     input_csv = Path(args.input_csv) if args.input_csv else Path(f"data/nepal/{symbol}.csv")
-    output_dir = Path(args.output_dir) if args.output_dir else Path(f"stocks/nepal/{symbol}/results/nearest_history_match")
+    output_dir = Path(args.output_dir) if args.output_dir else Path(f"stocks/nepal/{symbol}/generic/nearest_history_match")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     df = _load_ohlc(input_csv)

@@ -2,7 +2,7 @@
 Analyze repeating 2-token -> 1-token transition patterns from point-label output.
 
 Input:
-  stocks/nepal/<SYMBOL>/results/csv/in_out_pattern_9_18.csv
+  stocks/nepal/<SYMBOL>/custom/csv/in_out_pattern_9_18.csv
   (expects a `point_label` column from pattern_detector_v2.py)
 
 Outputs:
@@ -673,12 +673,15 @@ def analyze(
         token = ""
         trend = ""
         if _is_valid_up(i):
-            token = "IN_UP"
+            token = labels[i]
             trend = "UPTREND"
         elif _is_valid_down(i):
-            token = "IN_DOWN"
+            token = labels[i]
             trend = "DOWNTREND"
         else:
+            continue
+
+        if token not in keep_tokens:
             continue
 
         completed_patterns.append(
@@ -722,21 +725,60 @@ def analyze(
         completed_patterns,
     )
 
-    # Use only non-overlapping, immediate patterns in time order.
+    # Build the new hybrid chain based on user's specified logic.
+    # It prefers continuous chains (linking via roles 1,2,3) and falls back to the next available pattern.
     completed_patterns.sort(key=lambda r: r["idx_0"])
-    non_overlap: List[dict] = []
-    last_end = -1
-    for p in completed_patterns:
-        if p["idx_0"] > last_end:
-            non_overlap.append(p)
-            last_end = p["idx_3"]
+    
+    # Create a lookup map for efficient searching of pattern starts
+    starts_at = {p["idx_0"]: p for p in completed_patterns}
+    
+    hybrid_chain = []
+    visited_indices = set()
+    
+    master_list_idx = 0
+    while master_list_idx < len(completed_patterns):
+        p_current = completed_patterns[master_list_idx]
+        
+        if p_current["idx_0"] in visited_indices:
+            master_list_idx += 1
+            continue
 
+        # Start a new chain segment
+        hybrid_chain.append(p_current)
+        visited_indices.add(p_current["idx_0"])
+        
+        # Inner loop to follow the continuous chain
+        while True:
+            p_next = None
+            
+            # Prioritized search for the next link
+            for role_to_check in [1, 2, 3]:
+                next_start_index = p_current[f"idx_{role_to_check}"]
+                if next_start_index in starts_at:
+                    potential_next = starts_at[next_start_index]
+                    if potential_next["idx_0"] not in visited_indices:
+                        p_next = potential_next
+                        break # Found a link
+            
+            # If a link was found, add it and continue the inner loop
+            if p_next:
+                hybrid_chain.append(p_next)
+                visited_indices.add(p_next["idx_0"])
+                p_current = p_next
+            else:
+                # No continuous link found, break inner loop to start new segment
+                break
+        
+        master_list_idx += 1
+
+
+    # Re-calculate transition counters and examples based on the new hybrid_chain
     pat_counter: Dict[Context, Counter] = defaultdict(Counter)
     pat_examples: List[dict] = []
-    for i in range(2, len(non_overlap)):
-        a = non_overlap[i - 2]
-        b = non_overlap[i - 1]
-        c = non_overlap[i]
+    for i in range(2, len(hybrid_chain)):
+        a = hybrid_chain[i - 2]
+        b = hybrid_chain[i - 1]
+        c = hybrid_chain[i]
         ctx = (a["pattern_token"], b["pattern_token"])
         pat_counter[ctx][c["pattern_token"]] += 1
         pat_examples.append(
@@ -842,13 +884,13 @@ def analyze(
     with chain_txt.open("w", encoding="utf-8") as f:
         f.write("Pattern chain (immediate sequence, sliding window)\n")
         f.write("Each line uses consecutive complete patterns.\n\n")
-        for i, p in enumerate(non_overlap):
+        for i, p in enumerate(hybrid_chain):
             f.write(f"{i+1}. {p['pattern_token']} @ {p['date_0_label']}\n")
         f.write("\nTransitions:\n")
-        for i in range(2, len(non_overlap)):
-            a = non_overlap[i-2]
-            b = non_overlap[i-1]
-            c = non_overlap[i]
+        for i in range(2, len(hybrid_chain)):
+            a = hybrid_chain[i-2]
+            b = hybrid_chain[i-1]
+            c = hybrid_chain[i]
             total_ctx = sum(pat_counter.get((a['pattern_token'], b['pattern_token']), {}).values())
             hit_count = pat_counter.get((a['pattern_token'], b['pattern_token']), {}).get(c['pattern_token'], 0)
             pct = (hit_count / total_ctx * 100.0) if total_ctx else 0.0
@@ -880,11 +922,11 @@ def main() -> None:
     parser.add_argument("symbol", help="Stock symbol, e.g. NICA")
     parser.add_argument(
         "--input-csv",
-        help="Path to labeled pattern CSV (default: stocks/nepal/<symbol>/results/csv/in_out_pattern_9_18.csv)",
+        help="Path to labeled pattern CSV (default: stocks/nepal/<symbol>/custom/csv/in_out_pattern_9_18.csv)",
     )
     parser.add_argument(
         "--output-dir",
-        help="Output directory (default: same results folder as input)",
+        help="Output directory (default: same custom folder as input)",
     )
     parser.add_argument(
         "--split-ratio",
@@ -916,7 +958,7 @@ def main() -> None:
     args = parser.parse_args()
 
     symbol = args.symbol.upper()
-    default_input = Path(f"stocks/nepal/{symbol}/results/csv/in_out_pattern_9_18.csv")
+    default_input = Path(f"stocks/nepal/{symbol}/custom/csv/in_out_pattern_9_18.csv")
     input_csv = Path(args.input_csv) if args.input_csv else default_input
     output_dir = (
         Path(args.output_dir)

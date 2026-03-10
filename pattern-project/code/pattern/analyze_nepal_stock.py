@@ -1,6 +1,6 @@
 """
 Generic script to analyze Nepal stocks with EMA crossover detection and visualization.
-Usage: python analyze_nepal_stock.py <symbol> [--ema-short 9] [--ema-long 18] [--output-dir stocks/nepal/<symbol>/results]
+Usage: python analyze_nepal_stock.py <symbol> [--ema-short 9] [--ema-long 18] [--output-dir stocks/nepal/<symbol>/custom]
 """
 
 import pandas as pd
@@ -636,7 +636,7 @@ if __name__ == '__main__':
     symbol = args.symbol.upper()
     short_span = args.ema_short
     long_span = args.ema_long
-    output_dir = f'stocks/nepal/{symbol}/results'
+    output_dir = f'stocks/nepal/{symbol}/custom'
     
     try:
         print(f"Loading {symbol}...")

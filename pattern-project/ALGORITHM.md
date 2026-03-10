@@ -14,8 +14,8 @@ Rules:
 5. Enforce alternation: `HIGH -> LOW -> HIGH -> LOW ...`.
 
 Outputs:
-- CSV: `stocks/nepal/<SYMBOL>/results/csv/highs_lows_pattern_9_18.csv`
-- PNG: `stocks/nepal/<SYMBOL>/results/png/highs_lows_pattern_9_18.png`
+- CSV: `stocks/nepal/<SYMBOL>/custom/csv/highs_lows_pattern_9_18.csv`
+- PNG: `stocks/nepal/<SYMBOL>/custom/png/highs_lows_pattern_9_18.png`
 
 ## 2) Valid Pattern Definition (0,1,2,3)
 
@@ -37,18 +37,19 @@ All other combinations are invalid.
 
 Rule:
 - `0` is the *start* of a valid pattern.
-- If `0` overlaps any other valid pattern’s `1/2/3`, it becomes **IN**.
-- If `0` does **not** overlap, it remains **OUT**.
-- Points `1/2/3` are always **IN** (by that pattern’s trend).
-- Points not in any valid pattern are **unlabeled**.
+- **Priority Rule:** If a point overlaps multiple patterns (e.g. acts as role 3 in a previous pattern and role 0 in a new pattern), it **prioritizes its role as 0**. It becomes the start of the new trend and adopts the new trend's direction.
+- If `0` overlaps any other valid pattern’s `1/2/3`, it becomes **IN** (e.g., a continuous overlapping wave).
+- If `0` does **not** overlap, it remains **OUT** (an isolated trend start).
+- Points `1/2/3` are always **IN** (following their pattern’s trend).
+- Points not in any valid pattern are **unlabeled** (or invalid).
 
 Labels:
-- `IN_UP` / `IN_DOWN`: points `1/2/3` in valid up/down patterns
-- `OUT_UP` / `OUT_DOWN`: point `0` of valid up/down patterns (if not overlapping)
+- `IN_UP` / `IN_DOWN`: Points that are part of a valid uptrend/downtrend (roles 0, 1, 2, or 3) and overlap with adjacent trend structures. The UP/DOWN strictly indicates the direction of the pattern they belong to (e.g., UP means the segment 0->1->2->3 is an uptrend).
+- `OUT_UP` / `OUT_DOWN`: Point `0` of valid up/down patterns that do *not* overlap with a previous pattern.
 
 Outputs:
-- CSV: `stocks/nepal/<SYMBOL>/results/csv/in_out_pattern_9_18.csv`
-- PNG: `stocks/nepal/<SYMBOL>/results/png/in_out_pattern_9_18_visualization.png`
+- CSV: `stocks/nepal/<SYMBOL>/custom/csv/in_out_pattern_9_18.csv`
+- PNG: `stocks/nepal/<SYMBOL>/custom/png/in_out_pattern_9_18_visualization.png`
 
 ## 4) Chain Pattern Output (Main Algorithm)
 
@@ -62,13 +63,13 @@ This is the main market-footprint algorithm:
 4. Output dates using each pattern’s **0-point** date.
 
 Main output:
-- `stocks/nepal/<SYMBOL>/results/txt/in_out_up_down_9_18_chain.txt`
+- `stocks/nepal/<SYMBOL>/custom/txt/in_out_up_down_9_18_chain.txt`
 
 Support output:
-- `stocks/nepal/<SYMBOL>/results/txt/in_out_up_down_9_18.txt`
+- `stocks/nepal/<SYMBOL>/custom/txt/in_out_up_down_9_18.txt`
   (same transitions, aggregated by counts/probabilities)
 
 ## 5) Swing Fallback (Optional)
 
 If you want a swing-only view for the same labels:
-- `stocks/nepal/<SYMBOL>/results/txt/transition_clean_prev2_to_swing.txt`
+- `stocks/nepal/<SYMBOL>/custom/txt/transition_clean_prev2_to_swing.txt`

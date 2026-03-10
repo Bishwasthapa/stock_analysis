@@ -185,11 +185,8 @@ class TrendDetector:
 
             sequences_list.append((p0.index, seq_indices, trend_type))
 
-        # Decide final trend/role per swing:
-        # - if never in a pattern -> NONE, -1
-        # - if appears as both role 0 and any non-zero role, keep non-zero role
-        # - if appears only as role 0 -> keep role 0 (OUT)
-        # - else keep non-zero role
+        # Decide final trend/role per swing (for basic tuple return):
+        # We also prioritize role 0 here so the exporter prints it correctly.
         for swing in swings:
             entries = membership.get(swing.index, [])
             if not entries:
@@ -198,12 +195,13 @@ class TrendDetector:
 
             zero_entries = [e for e in entries if e[1] == 0]
             nonzero_entries = [e for e in entries if e[1] > 0]
-            if nonzero_entries:
+            
+            if zero_entries:
+                trend_type, role = zero_entries[-1]
+                classification[swing.index] = (trend_type, role)
+            elif nonzero_entries:
                 trend_type, role = nonzero_entries[0]
                 classification[swing.index] = (trend_type, role)
-            elif zero_entries:
-                trend_type, _ = zero_entries[0]
-                classification[swing.index] = (trend_type, 0)
         
         return classification, sequences_list
 
@@ -260,10 +258,20 @@ class PatternClassifier:
             if not memberships:
                 continue
 
-            # If any containing pattern has start_in, whole pattern is IN
-            in_patterns = [p for p, _ in memberships if start_in.get(p, False)]
-            chosen_p = in_patterns[0] if in_patterns else memberships[0][0]
-            role = dict(memberships).get(chosen_p, memberships[0][1])
+            # Find if this swing acts as role 0 in ANY pattern
+            role_0_patterns = [p for p, role in memberships if role == 0]
+            
+            if role_0_patterns:
+                # Prioritize the pattern where it is role 0.
+                # If there are multiple, just pick the first one.
+                chosen_p = role_0_patterns[-1]
+                role = 0
+            else:
+                # If not role 0 anywhere, prioritize IN patterns
+                in_patterns = [p for p, _ in memberships if start_in.get(p, False)]
+                chosen_p = in_patterns[0] if in_patterns else memberships[0][0]
+                role = dict(memberships).get(chosen_p, memberships[0][1])
+
             trend_type = pattern_trends[chosen_p]
 
             if role == 0 and not start_in.get(chosen_p, False):
@@ -368,17 +376,6 @@ class ResultExporter:
             if cls == 'OUT':
                 # OUT points: red dot, no label
                 ax.scatter(x_date, swing.price, color='red', s=200, zorder=5, alpha=0.7)
-                # Date label at crossover point
-                ax.text(
-                    x_date,
-                    swing.price - (max(prices) - min(prices)) * 0.02,
-                    x_date.strftime('%d %b'),
-                    fontsize=8,
-                    ha='center',
-                    va='top',
-                    color='darkred',
-                    alpha=0.8,
-                )
             elif cls == '':
                 # Unlabeled/invalid points: lighter red to distinguish from true OUT(0) points.
                 ax.scatter(
@@ -391,25 +388,26 @@ class ResultExporter:
                     alpha=0.65,
                 )
             else:
-                # IN points: label with role 1/2/3 and trend direction color
-                if role is not None and role > 0:
+                # IN points: label with role 0/1/2/3 and trend direction color
+                if role is not None and role >= 0:
                     color = 'green' if point_label == 'IN_UP' else 'dodgerblue'
                     ax.scatter(x_date, swing.price, color=color, s=300, zorder=6, alpha=0.9, edgecolors='black', linewidth=2)
                     # Add text label above the point
                     ax.text(x_date, swing.price + (max(prices) - min(prices)) * 0.02, str(role), 
                            fontsize=12, fontweight='bold', ha='center', va='bottom', 
                            color='darkgreen', bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.7))
-                    # Date label at crossover point
-                    ax.text(
-                        x_date,
-                        swing.price - (max(prices) - min(prices)) * 0.02,
-                        x_date.strftime('%d %b'),
-                        fontsize=8,
-                        ha='center',
-                        va='top',
-                        color='black',
-                        alpha=0.75,
-                    )
+            
+            # Common Date label at crossover point for ALL points
+            ax.text(
+                x_date,
+                swing.price - (max(prices) - min(prices)) * 0.02,
+                x_date.strftime('%d %b'),
+                fontsize=8,
+                ha='center',
+                va='top',
+                color='black',
+                alpha=0.8,
+            )
         
         ax.set_xlabel('Date', fontsize=14)
         ax.set_ylabel('Price', fontsize=14)
@@ -495,8 +493,8 @@ if __name__ == '__main__':
     symbol = sys.argv[1]
     
     # Default paths
-    zigzag_csv = f'stocks/nepal/{symbol}/results/csv/highs_lows_pattern_9_18.csv'
-    output_csv = f'stocks/nepal/{symbol}/results/csv/in_out_pattern_9_18.csv'
+    zigzag_csv = f'stocks/nepal/{symbol}/custom/csv/highs_lows_pattern_9_18.csv'
+    output_csv = f'stocks/nepal/{symbol}/custom/csv/in_out_pattern_9_18.csv'
     
     # Override if provided
     if '--zigzag-csv' in sys.argv:

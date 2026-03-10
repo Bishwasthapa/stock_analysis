@@ -9,7 +9,7 @@ Features:
 5) Auto model selection across distance/regime configurations
 
 Outputs:
-  stocks/nepal/<SYMBOL>/results/nearest_history_walkforward/
+  stocks/nepal/<SYMBOL>/generic/nearest_history_walkforward/
     - model_selection.csv
     - walkforward_predictions.csv
     - walkforward_summary.csv
@@ -467,7 +467,7 @@ def main() -> None:
         raise ValueError("--score-horizon and --signal-horizon must be included in --horizons")
 
     input_csv = Path(args.input_csv) if args.input_csv else Path(f"data/nepal/{symbol}.csv")
-    output_dir = Path(args.output_dir) if args.output_dir else Path(f"stocks/nepal/{symbol}/results/nearest_history_walkforward")
+    output_dir = Path(args.output_dir) if args.output_dir else Path(f"stocks/nepal/{symbol}/generic/nearest_history_walkforward")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     df = _load_ohlc(input_csv)

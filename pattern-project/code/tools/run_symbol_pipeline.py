@@ -54,7 +54,7 @@ def main() -> None:
     run_cmd([py, "code/pattern/pattern_detector_v2.py", symbol])
     run_cmd([py, "code/pattern/transition_pattern_analysis.py", symbol])
     print(f"\n✓ Pattern pipeline complete for {symbol}")
-    print(f"  Results: stocks/nepal/{symbol}/results/")
+    print(f"  Results: stocks/nepal/{symbol}/custom/")
 
 
 if __name__ == "__main__":

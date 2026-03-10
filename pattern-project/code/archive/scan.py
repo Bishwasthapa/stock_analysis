@@ -28,15 +28,15 @@ def main():
 
     # Load data source
     success = False
-    results_dir = "results"
+    results_dir = "generic"
     
     if args.chart_image:
         success = engine.load_image_as_data(args.chart_image)
         # Vision 1: Dedicated visual_analysis sub-folder
-        results_dir = os.path.join(os.path.dirname(args.chart_image), "results", "visual_analysis")
+        results_dir = os.path.join(os.path.dirname(args.chart_image), "generic", "visual_analysis")
     elif args.symbol:
         stock_dir = os.path.join("stocks", args.market, args.symbol)
-        results_dir = os.path.join(stock_dir, "results")
+        results_dir = os.path.join(stock_dir, "generic")
         if args.market == "nepal":
             success = engine.load_nepse_data(args.symbol)
         else:

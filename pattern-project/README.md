@@ -51,13 +51,13 @@ SYMBOL=NICA
 
 Main outputs to inspect:
 - Raw/fetched CSV: `data/nepal/<SYMBOL>.csv`
-- IN/OUT labeled stream: `stocks/nepal/<SYMBOL>/results/csv/in_out_pattern_9_18.csv`
-- IN/OUT chart: `stocks/nepal/<SYMBOL>/results/png/in_out_pattern_9_18_visualization.png`
-- Complete-pattern transition summary: `stocks/nepal/<SYMBOL>/results/txt/in_out_up_down_9_18.txt`
-- Transition examples with dates: `stocks/nepal/<SYMBOL>/results/csv/pattern_transition_2to1_examples.csv`
+- IN/OUT labeled stream: `stocks/nepal/<SYMBOL>/custom/csv/in_out_pattern_9_18.csv`
+- IN/OUT chart: `stocks/nepal/<SYMBOL>/custom/png/in_out_pattern_9_18_visualization.png`
+- Complete-pattern transition summary: `stocks/nepal/<SYMBOL>/custom/txt/in_out_up_down_9_18.txt`
+- Transition examples with dates: `stocks/nepal/<SYMBOL>/custom/csv/pattern_transition_2to1_examples.csv`
 
 Algorithm details:
-- See `ALGORITHM.md` for the exact logic used to draw the IN/OUT chart and compute chain transitions.
+- See `ALGORITHM.md` for the exact logic used to draw the IN/OUT chart, how valid patterns are defined, the overlapping priority rules for trend starts (`role 0`), and how chain transitions are computed.
 
 Note:
 - `analyze_nepal_stock.py` now auto-downloads NEPSE CSV to
@@ -76,16 +76,16 @@ Local-file freshness behavior:
 
 What is automatic:
 - `pattern_detector_v2.py` reads:
-  - `stocks/nepal/<SYMBOL>/results/csv/highs_lows_pattern_9_18.csv`
+  - `stocks/nepal/<SYMBOL>/custom/csv/highs_lows_pattern_9_18.csv`
 - It writes:
-  - `stocks/nepal/<SYMBOL>/results/csv/in_out_pattern_9_18.csv`
-- `transition_pattern_analysis.py` then reads that file and writes all transition reports in the same `results/` folder.
+  - `stocks/nepal/<SYMBOL>/custom/csv/in_out_pattern_9_18.csv`
+- `transition_pattern_analysis.py` then reads that file and writes all transition reports in the same `<SYMBOL>/custom/` folder.
 
 Key input/output path flow:
 - Input raw CSV (auto-created if missing): `data/nepal/<SYMBOL>.csv`
-- Zigzag source for pattern detector: `stocks/nepal/<SYMBOL>/results/csv/highs_lows_pattern_9_18.csv`
-- Labeled pattern stream: `stocks/nepal/<SYMBOL>/results/csv/in_out_pattern_9_18.csv`
-- Complete-pattern transition report: `stocks/nepal/<SYMBOL>/results/txt/in_out_up_down_9_18.txt`
+- Zigzag source for pattern detector: `stocks/nepal/<SYMBOL>/custom/csv/highs_lows_pattern_9_18.csv`
+- Labeled pattern stream: `stocks/nepal/<SYMBOL>/custom/csv/in_out_pattern_9_18.csv`
+- Complete-pattern transition report: `stocks/nepal/<SYMBOL>/custom/txt/in_out_up_down_9_18.txt`
 
 Pattern-level outputs from `transition_pattern_analysis.py`:
 - `pattern_completed_sequence.csv`
@@ -127,10 +127,11 @@ These are kept for reference and are not part of the main pattern pipeline.
 - `code/archive/scan.py`
 - `code/archive/nearest_history_match.py`
 - `code/archive/nearest_history_walkforward.py`
+  - outputs go under `stocks/nepal/<SYMBOL>/generic/`
 
 ## 📂 Project Structure
 
 - `code/pattern/`: Pattern pipeline scripts (EMA -> IN/OUT -> transitions).
 - `code/tools/`: One-command runners and reports.
 - `code/archive/`: Legacy modules not used in the main flow.
-- `stocks/`: Organized data and results per stock.
+- `stocks/`: Organized data and results per stock (`custom/` for this pipeline).
