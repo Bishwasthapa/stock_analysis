@@ -187,8 +187,7 @@ class TrendDetector:
 
         # Decide final trend/role per swing:
         # - if never in a pattern -> NONE, -1
-        # - if appears as both role 0 and any non-zero role, treat as intersecting
-        #   start and continuation -> keep non-zero role (NOT OUT)
+        # - if appears as both role 0 and any non-zero role, keep non-zero role
         # - if appears only as role 0 -> keep role 0 (OUT)
         # - else keep non-zero role
         for swing in swings:
@@ -225,22 +224,59 @@ class PatternClassifier:
           - unlabeled: not part of any valid 0-1-2-3 trend
         """
         classification: Dict[int, Tuple[str, Optional[int], str, str]] = {}
-        
-        for swing in swings:
-            if swing.index not in trends:
+
+        # Build role map per pattern and detect whether each pattern start (role 0) is IN or OUT.
+        # Rule: start (0) is IN if it is also 1/2/3 of any other valid pattern.
+        start_in: Dict[int, bool] = {}
+        start_trend: Dict[int, str] = {}
+        pattern_roles: List[Dict[int, int]] = []
+        pattern_trends: List[str] = []
+        for seq_idx, seq_indices, trend_type in sequences_list:
+            role_map = {idx: role for role, idx in enumerate(seq_indices)}
+            pattern_roles.append(role_map)
+            pattern_trends.append(trend_type)
+            start_trend[seq_indices[0]] = trend_type
+
+        # Index swing membership in patterns
+        swing_to_patterns: Dict[int, List[Tuple[int, int]]] = {}
+        for p_idx, role_map in enumerate(pattern_roles):
+            for idx, role in role_map.items():
+                swing_to_patterns.setdefault(idx, []).append((p_idx, role))
+
+        # Determine whether each pattern start is IN (overlaps another pattern's 1/2/3)
+        for p_idx, role_map in enumerate(pattern_roles):
+            start_idx = [k for k, v in role_map.items() if v == 0]
+            if not start_idx:
                 continue
-            trend_type, role = trends[swing.index]
-            if role in (1, 2, 3):
+            s_idx = start_idx[0]
+            overlaps = swing_to_patterns.get(s_idx, [])
+            start_in[p_idx] = any(role in (1, 2, 3) and other_idx != p_idx for other_idx, role in overlaps)
+
+        # Assign labels based on pattern start rule:
+        # - role 0 is OUT unless it overlaps another pattern's 1/2/3
+        # - roles 1/2/3 are always IN (trend direction)
+        for swing in swings:
+            memberships = swing_to_patterns.get(swing.index, [])
+            if not memberships:
+                continue
+
+            # If any containing pattern has start_in, whole pattern is IN
+            in_patterns = [p for p, _ in memberships if start_in.get(p, False)]
+            chosen_p = in_patterns[0] if in_patterns else memberships[0][0]
+            role = dict(memberships).get(chosen_p, memberships[0][1])
+            trend_type = pattern_trends[chosen_p]
+
+            if role == 0 and not start_in.get(chosen_p, False):
+                if trend_type == 'UPTREND':
+                    classification[swing.index] = ('OUT', role, trend_type, 'OUT_UP')
+                else:
+                    classification[swing.index] = ('OUT', role, trend_type, 'OUT_DOWN')
+            else:
                 if trend_type == 'UPTREND':
                     classification[swing.index] = ('IN', role, trend_type, 'IN_UP')
-                elif trend_type == 'DOWNTREND':
+                else:
                     classification[swing.index] = ('IN', role, trend_type, 'IN_DOWN')
-            elif role == 0:
-                if trend_type == 'UPTREND':
-                    classification[swing.index] = ('OUT', 0, trend_type, 'OUT_UP')
-                elif trend_type == 'DOWNTREND':
-                    classification[swing.index] = ('OUT', 0, trend_type, 'OUT_DOWN')
-        
+
         return classification
 
 
@@ -436,11 +472,14 @@ def analyze_trend_pattern(symbol: str, zigzag_csv: str, output_csv: str):
     
     # 4. Export results
     print("4. Exporting results...")
+    import os
+    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
     ResultExporter.export_classification(swings, classification, output_csv)
     
     # 5. Visualize classification
     print("5. Generating classification visualization...")
-    viz_path = output_csv.replace('.csv', '_visualization.png')
+    viz_path = output_csv.replace("/csv/", "/png/").replace(".csv", "_visualization.png")
+    os.makedirs(os.path.dirname(viz_path), exist_ok=True)
     ResultExporter.plot_classification(swings, classification, symbol, viz_path)
     
     print(f"\n✓ Trend-based pattern detection complete!\n")
@@ -456,8 +495,8 @@ if __name__ == '__main__':
     symbol = sys.argv[1]
     
     # Default paths
-    zigzag_csv = f'stocks/nepal/{symbol}/results/highs_lows_pattern_9_18.csv'
-    output_csv = f'stocks/nepal/{symbol}/results/in_out_pattern_9_18.csv'
+    zigzag_csv = f'stocks/nepal/{symbol}/results/csv/highs_lows_pattern_9_18.csv'
+    output_csv = f'stocks/nepal/{symbol}/results/csv/in_out_pattern_9_18.csv'
     
     # Override if provided
     if '--zigzag-csv' in sys.argv:

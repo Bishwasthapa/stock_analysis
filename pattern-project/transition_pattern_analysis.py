@@ -2,30 +2,29 @@
 Analyze repeating 2-token -> 1-token transition patterns from point-label output.
 
 Input:
-  stocks/nepal/<SYMBOL>/results/in_out_pattern_9_18.csv
+  stocks/nepal/<SYMBOL>/results/csv/in_out_pattern_9_18.csv
   (expects a `point_label` column from pattern_detector_v2.py)
 
-Outputs (CSV):
-  - transition_token_summary.csv
-  - transition_2to1_full.csv
-  - transition_context_summary.csv
-  - transition_train_recent_validation.csv
-  - transition_top_actionable.csv
-  - transition_easy_patterns.csv
-  - transition_easy_patterns.txt
-  - transition_clean_prev2_to_next.csv
-  - transition_clean_prev2_to_swing.csv
-  - transition_clean_prev2_to_next.txt
-  - transition_clean_prev2_to_swing.txt
-  - transition_clean_prev2_priority.csv
-  - transition_clean_prev2_confirmed.csv
-  - transition_confirmed_examples.csv
-  - transition_clean_prev2_priority.txt
-  - transition_clean_prev2_confirmed.txt
-  - pattern_completed_sequence.csv
-  - pattern_transition_2to1.csv
-  - pattern_transition_2to1.txt
-  - pattern_transition_2to1_examples.csv
+Outputs:
+  csv/:
+    - transition_token_summary.csv
+    - transition_2to1_full.csv
+    - transition_context_summary.csv
+    - transition_train_recent_validation.csv
+    - transition_top_actionable.csv
+    - transition_easy_patterns.csv
+    - transition_clean_prev2_to_next.csv
+    - transition_clean_prev2_to_swing.csv
+    - transition_clean_prev2_priority.csv
+    - transition_clean_prev2_confirmed.csv
+    - transition_confirmed_examples.csv
+    - pattern_completed_sequence.csv
+    - pattern_transition_2to1.csv
+    - pattern_transition_2to1_examples.csv
+  txt/ (kept):
+    - in_out_up_down_9_18.txt
+    - in_out_up_down_9_18_chain.txt
+    - transition_clean_prev2_to_swing.txt
 """
 
 from __future__ import annotations
@@ -101,6 +100,8 @@ def _date_label(value: str) -> str:
 def analyze(
     rows: List[dict],
     out_dir: Path,
+    csv_dir: Path,
+    txt_dir: Path,
     split_ratio: float,
     min_context_count: int,
     stable_threshold: float,
@@ -122,7 +123,7 @@ def analyze(
             }
         )
     write_csv(
-        out_dir / "transition_token_summary.csv",
+        csv_dir / "transition_token_summary.csv",
         ["label", "count", "percent"],
         token_rows,
     )
@@ -168,7 +169,7 @@ def analyze(
             )
 
     write_csv(
-        out_dir / "transition_2to1_full.csv",
+        csv_dir / "transition_2to1_full.csv",
         ["prev_2", "next", "count", "total_context_count", "prob_next_given_prev2"],
         full_rows,
     )
@@ -177,7 +178,7 @@ def analyze(
         key=lambda r: (-float(r["score_count_x_prob"]), -int(r["total_context_count"])),
     )
     write_csv(
-        out_dir / "transition_context_summary.csv",
+        csv_dir / "transition_context_summary.csv",
         [
             "prev_2",
             "total_context_count",
@@ -247,7 +248,7 @@ def analyze(
         validation_rows, key=lambda r: (-int(r["train_count"]), -int(r["recent_count"]))
     )
     write_csv(
-        out_dir / "transition_train_recent_validation.csv",
+        csv_dir / "transition_train_recent_validation.csv",
         [
             "prev_2",
             "train_count",
@@ -267,7 +268,7 @@ def analyze(
         r for r in context_rows_sorted if int(r["total_context_count"]) >= min_context_count
     ]
     write_csv(
-        out_dir / "transition_top_actionable.csv",
+        csv_dir / "transition_top_actionable.csv",
         [
             "prev_2",
             "total_context_count",
@@ -305,20 +306,12 @@ def analyze(
         )
 
     write_csv(
-        out_dir / "transition_easy_patterns.csv",
+        csv_dir / "transition_easy_patterns.csv",
         ["rule", "prev_2", "predicted_next", "confidence", "count", "strength"],
         easy_rows,
     )
 
-    txt_path = out_dir / "transition_easy_patterns.txt"
-    with txt_path.open("w", encoding="utf-8") as f:
-        f.write("Easy Transition Rules (2-token -> next)\n")
-        f.write("Sorted by count * confidence\n\n")
-        for i, r in enumerate(easy_rows, start=1):
-            f.write(
-                f"{i}. {r['rule']} | confidence={float(r['confidence']):.2%} "
-                f"| count={r['count']} | {r['strength']}\n"
-            )
+    # text output trimmed (no transition_easy_patterns.txt)
 
     # 6) Clean combination tables:
     #    Inputs must be valid pattern labels only.
@@ -380,7 +373,7 @@ def analyze(
         key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["next"])
     )
     write_csv(
-        out_dir / "transition_clean_prev2_to_next.csv",
+        csv_dir / "transition_clean_prev2_to_next.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -392,19 +385,7 @@ def analyze(
         clean_full_rows,
     )
 
-    clean_txt = out_dir / "transition_clean_prev2_to_next.txt"
-    with clean_txt.open("w", encoding="utf-8") as f:
-        f.write("Clean Prev2 -> Next combinations (valid inputs only, INVALID skipped)\n\n")
-        for key in sorted(grouped.keys()):
-            left, right = key
-            f.write(f"{left} + {right}:\n")
-            for row in sorted(grouped[key], key=lambda x: (-int(x["count"]), x["next"])):
-                p = float(row["prob_next_given_prev2"]) * 100
-                f.write(
-                    f"  -> {row['next']} | count={row['count']}/{row['total_context_count']} "
-                    f"({p:.2f}%)\n"
-                )
-            f.write("\n")
+    # text output trimmed (no transition_clean_prev2_to_next.txt)
 
     clean_swing_rows = []
     grouped_swing = defaultdict(list)
@@ -426,7 +407,7 @@ def analyze(
         key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["swing_result"])
     )
     write_csv(
-        out_dir / "transition_clean_prev2_to_swing.csv",
+        csv_dir / "transition_clean_prev2_to_swing.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -438,7 +419,7 @@ def analyze(
         clean_swing_rows,
     )
 
-    clean_swing_txt = out_dir / "transition_clean_prev2_to_swing.txt"
+    clean_swing_txt = txt_dir / "transition_clean_prev2_to_swing.txt"
     with clean_swing_txt.open("w", encoding="utf-8") as f:
         f.write("Clean Prev2 -> Swing combinations (valid inputs only, INVALID skipped)\n\n")
         for key in sorted(grouped_swing.keys()):
@@ -535,7 +516,7 @@ def analyze(
         key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["next"])
     )
     write_csv(
-        out_dir / "transition_clean_prev2_confirmed.csv",
+        csv_dir / "transition_clean_prev2_confirmed.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -547,7 +528,7 @@ def analyze(
         confirmed_rows,
     )
     write_csv(
-        out_dir / "transition_confirmed_examples.csv",
+        csv_dir / "transition_confirmed_examples.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -566,19 +547,7 @@ def analyze(
         confirmed_examples,
     )
 
-    confirmed_txt = out_dir / "transition_clean_prev2_confirmed.txt"
-    with confirmed_txt.open("w", encoding="utf-8") as f:
-        f.write("Confirmed Prev2 -> Next combinations (requires 4-point completion)\n\n")
-        for key in sorted(confirmed_grouped.keys()):
-            left, right = key
-            f.write(f"{left} + {right}:\n")
-            for row in sorted(confirmed_grouped[key], key=lambda x: (-int(x["count"]), x["next"])):
-                p = float(row["prob_next_given_prev2_confirmed"]) * 100
-                f.write(
-                    f"  -> {row['next']} | count={row['count']}/{row['total_context_count']} "
-                    f"({p:.2f}%)\n"
-                )
-            f.write("\n")
+    # text output trimmed (no transition_clean_prev2_confirmed.txt)
 
     # 7) Priority output:
     #    prev2 inputs are valid patterns only.
@@ -644,7 +613,7 @@ def analyze(
         key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["next_signal"])
     )
     write_csv(
-        out_dir / "transition_clean_prev2_priority.csv",
+        csv_dir / "transition_clean_prev2_priority.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -657,26 +626,7 @@ def analyze(
         priority_rows,
     )
 
-    priority_txt = out_dir / "transition_clean_prev2_priority.txt"
-    with priority_txt.open("w", encoding="utf-8") as f:
-        f.write(
-            "Priority Prev2 -> Next signal "
-            "(pattern first; else immediate strong swing fallback)\n"
-        )
-        f.write(f"Strong swing threshold: abs move >= {strong_swing_min_move_pct:.2f}%\n\n")
-        for key in sorted(priority_grouped.keys()):
-            left, right = key
-            f.write(f"{left} + {right}:\n")
-            for row in sorted(
-                priority_grouped[key],
-                key=lambda x: (-int(x["count"]), x["next_signal"]),
-            ):
-                p = float(row["prob_signal_given_prev2"]) * 100
-                f.write(
-                    f"  -> {row['next_signal']} [{row['signal_type']}] | "
-                    f"count={row['count']}/{row['total_context_count']} ({p:.2f}%)\n"
-                )
-            f.write("\n")
+    # text output trimmed (no transition_clean_prev2_priority.txt)
 
     # 8) Pattern-level transitions (immediate complete patterns only: 0,1,2,3)
     #    Build valid patterns by scanning every immediate 4-point window.
@@ -752,7 +702,7 @@ def analyze(
 
     completed_patterns.sort(key=lambda r: r["idx_0"])
     write_csv(
-        out_dir / "pattern_completed_sequence.csv",
+        csv_dir / "pattern_completed_sequence.csv",
         [
             "pattern_token",
             "trend_type",
@@ -772,13 +722,21 @@ def analyze(
         completed_patterns,
     )
 
-    pat_tokens = [p["pattern_token"] for p in completed_patterns]
+    # Use only non-overlapping, immediate patterns in time order.
+    completed_patterns.sort(key=lambda r: r["idx_0"])
+    non_overlap: List[dict] = []
+    last_end = -1
+    for p in completed_patterns:
+        if p["idx_0"] > last_end:
+            non_overlap.append(p)
+            last_end = p["idx_3"]
+
     pat_counter: Dict[Context, Counter] = defaultdict(Counter)
     pat_examples: List[dict] = []
-    for i in range(2, len(completed_patterns)):
-        a = completed_patterns[i - 2]
-        b = completed_patterns[i - 1]
-        c = completed_patterns[i]
+    for i in range(2, len(non_overlap)):
+        a = non_overlap[i - 2]
+        b = non_overlap[i - 1]
+        c = non_overlap[i]
         ctx = (a["pattern_token"], b["pattern_token"])
         pat_counter[ctx][c["pattern_token"]] += 1
         pat_examples.append(
@@ -821,7 +779,7 @@ def analyze(
         key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["next"])
     )
     write_csv(
-        out_dir / "pattern_transition_2to1.csv",
+        csv_dir / "pattern_transition_2to1.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -833,7 +791,7 @@ def analyze(
         pat_rows,
     )
     write_csv(
-        out_dir / "pattern_transition_2to1_examples.csv",
+        csv_dir / "pattern_transition_2to1_examples.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -854,9 +812,14 @@ def analyze(
         pat_examples,
     )
 
-    pat_txt = out_dir / "pattern_transition_2to1.txt"
+    pat_txt = txt_dir / "in_out_up_down_9_18.txt"
     with pat_txt.open("w", encoding="utf-8") as f:
-        f.write("Pattern-level transitions (complete 0,1,2,3 patterns only)\n\n")
+        f.write("Pattern-level transitions (complete 0,1,2,3 patterns only)\n")
+        f.write("Dates shown are the 0-point of each pattern window.\n\n")
+        example_map: Dict[Context, List[dict]] = defaultdict(list)
+        for ex in pat_examples:
+            example_map[(ex["prev_2_a"], ex["prev_2_b"], ex["next"])].append(ex)
+
         for key in sorted(pat_grouped.keys()):
             left, right = key
             f.write(f"{left} + {right}:\n")
@@ -866,7 +829,34 @@ def analyze(
                     f"  -> {row['next']} | count={row['count']}/{row['total_context_count']} "
                     f"({p:.2f}%)\n"
                 )
+                ex_list = example_map.get((left, right, row["next"]), [])
+                if ex_list:
+                    for ex in ex_list:
+                        f.write(
+                            f"     dates: {ex['a_date_0_label']} + {ex['b_date_0_label']} -> {ex['c_date_0_label']}\n"
+                        )
             f.write("\n")
+
+    # Chain view: explicit sliding sequence (A+B->C then B+C->D)
+    chain_txt = txt_dir / "in_out_up_down_9_18_chain.txt"
+    with chain_txt.open("w", encoding="utf-8") as f:
+        f.write("Pattern chain (immediate sequence, sliding window)\n")
+        f.write("Each line uses consecutive complete patterns.\n\n")
+        for i, p in enumerate(non_overlap):
+            f.write(f"{i+1}. {p['pattern_token']} @ {p['date_0_label']}\n")
+        f.write("\nTransitions:\n")
+        for i in range(2, len(non_overlap)):
+            a = non_overlap[i-2]
+            b = non_overlap[i-1]
+            c = non_overlap[i]
+            total_ctx = sum(pat_counter.get((a['pattern_token'], b['pattern_token']), {}).values())
+            hit_count = pat_counter.get((a['pattern_token'], b['pattern_token']), {}).get(c['pattern_token'], 0)
+            pct = (hit_count / total_ctx * 100.0) if total_ctx else 0.0
+            f.write(
+                f"{a['pattern_token']} + {b['pattern_token']} -> {c['pattern_token']} | "
+                f"count={hit_count}/{total_ctx} ({pct:.2f}%) | "
+                f"dates: {a['date_0_label']} + {b['date_0_label']} -> {c['date_0_label']}\n"
+            )
 
     stable_count = sum(1 for r in context_rows if r["stability"] == "STABLE")
     unstable_count = sum(1 for r in context_rows if r["stability"] == "UNSTABLE")
@@ -890,7 +880,7 @@ def main() -> None:
     parser.add_argument("symbol", help="Stock symbol, e.g. NICA")
     parser.add_argument(
         "--input-csv",
-        help="Path to labeled pattern CSV (default: stocks/nepal/<symbol>/results/in_out_pattern_9_18.csv)",
+        help="Path to labeled pattern CSV (default: stocks/nepal/<symbol>/results/csv/in_out_pattern_9_18.csv)",
     )
     parser.add_argument(
         "--output-dir",
@@ -926,19 +916,24 @@ def main() -> None:
     args = parser.parse_args()
 
     symbol = args.symbol.upper()
-    default_input = Path(f"stocks/nepal/{symbol}/results/in_out_pattern_9_18.csv")
+    default_input = Path(f"stocks/nepal/{symbol}/results/csv/in_out_pattern_9_18.csv")
     input_csv = Path(args.input_csv) if args.input_csv else default_input
     output_dir = (
         Path(args.output_dir)
         if args.output_dir
-        else input_csv.parent
+        else input_csv.parent.parent
     )
-    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_dir = output_dir / "csv"
+    txt_dir = output_dir / "txt"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    txt_dir.mkdir(parents=True, exist_ok=True)
 
     rows = read_rows(input_csv)
     summary = analyze(
         rows=rows,
         out_dir=output_dir,
+        csv_dir=csv_dir,
+        txt_dir=txt_dir,
         split_ratio=args.split_ratio,
         min_context_count=args.min_context_count,
         stable_threshold=args.stable_threshold,
@@ -958,26 +953,23 @@ def main() -> None:
         f"recent start idx {summary['recent_start_index']} ({summary['recent_start_date']})"
     )
     print("\nGenerated files:")
-    print(f"  - {output_dir / 'transition_token_summary.csv'}")
-    print(f"  - {output_dir / 'transition_2to1_full.csv'}")
-    print(f"  - {output_dir / 'transition_context_summary.csv'}")
-    print(f"  - {output_dir / 'transition_train_recent_validation.csv'}")
-    print(f"  - {output_dir / 'transition_top_actionable.csv'}")
-    print(f"  - {output_dir / 'transition_easy_patterns.csv'}")
-    print(f"  - {output_dir / 'transition_easy_patterns.txt'}")
-    print(f"  - {output_dir / 'transition_clean_prev2_to_next.csv'}")
-    print(f"  - {output_dir / 'transition_clean_prev2_to_next.txt'}")
-    print(f"  - {output_dir / 'transition_clean_prev2_to_swing.csv'}")
-    print(f"  - {output_dir / 'transition_clean_prev2_to_swing.txt'}")
-    print(f"  - {output_dir / 'transition_clean_prev2_priority.csv'}")
-    print(f"  - {output_dir / 'transition_clean_prev2_priority.txt'}")
-    print(f"  - {output_dir / 'transition_clean_prev2_confirmed.csv'}")
-    print(f"  - {output_dir / 'transition_clean_prev2_confirmed.txt'}")
-    print(f"  - {output_dir / 'transition_confirmed_examples.csv'}")
-    print(f"  - {output_dir / 'pattern_completed_sequence.csv'}")
-    print(f"  - {output_dir / 'pattern_transition_2to1.csv'}")
-    print(f"  - {output_dir / 'pattern_transition_2to1.txt'}")
-    print(f"  - {output_dir / 'pattern_transition_2to1_examples.csv'}")
+    print(f"  - {csv_dir / 'transition_token_summary.csv'}")
+    print(f"  - {csv_dir / 'transition_2to1_full.csv'}")
+    print(f"  - {csv_dir / 'transition_context_summary.csv'}")
+    print(f"  - {csv_dir / 'transition_train_recent_validation.csv'}")
+    print(f"  - {csv_dir / 'transition_top_actionable.csv'}")
+    print(f"  - {csv_dir / 'transition_easy_patterns.csv'}")
+    print(f"  - {csv_dir / 'transition_clean_prev2_to_next.csv'}")
+    print(f"  - {csv_dir / 'transition_clean_prev2_to_swing.csv'}")
+    print(f"  - {txt_dir / 'transition_clean_prev2_to_swing.txt'}")
+    print(f"  - {csv_dir / 'transition_clean_prev2_priority.csv'}")
+    print(f"  - {csv_dir / 'transition_clean_prev2_confirmed.csv'}")
+    print(f"  - {csv_dir / 'transition_confirmed_examples.csv'}")
+    print(f"  - {csv_dir / 'pattern_completed_sequence.csv'}")
+    print(f"  - {csv_dir / 'pattern_transition_2to1.csv'}")
+    print(f"  - {txt_dir / 'in_out_up_down_9_18.txt'}")
+    print(f"  - {txt_dir / 'in_out_up_down_9_18_chain.txt'}")
+    print(f"  - {csv_dir / 'pattern_transition_2to1_examples.csv'}")
 
 
 if __name__ == "__main__":

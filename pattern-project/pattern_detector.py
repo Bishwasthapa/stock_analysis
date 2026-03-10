@@ -405,11 +405,14 @@ def analyze_pattern(symbol: str, zigzag_csv: str, output_csv: str):
     
     # 6. Export results
     print("6. Exporting results...")
+    import os
+    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
     ResultExporter.export_classification(swings, classification, output_csv)
     
     # 7. Visualize classification
     print("7. Generating classification visualization...")
-    viz_path = output_csv.replace('.csv', '_visualization.png')
+    viz_path = output_csv.replace("/csv/", "/png/").replace(".csv", "_visualization.png")
+    os.makedirs(os.path.dirname(viz_path), exist_ok=True)
     ResultExporter.plot_classification(swings, classification, symbol, viz_path)
     
     print(f"\n✓ Pattern detection complete!\n")
@@ -425,8 +428,8 @@ if __name__ == '__main__':
     symbol = sys.argv[1]
     
     # Default paths
-    zigzag_csv = f'stocks/nepal/{symbol}/results/highs_lows_pattern_9_18.csv'
-    output_csv = f'stocks/nepal/{symbol}/results/in_out_pattern_9_18.csv'
+    zigzag_csv = f'stocks/nepal/{symbol}/results/csv/highs_lows_pattern_9_18.csv'
+    output_csv = f'stocks/nepal/{symbol}/results/csv/in_out_pattern_9_18.csv'
     
     # Override if provided
     if '--zigzag-csv' in sys.argv:

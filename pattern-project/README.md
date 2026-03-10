@@ -94,10 +94,10 @@ SYMBOL=ACLBSL
 
 Main outputs to inspect:
 - Raw/fetched CSV: `data/nepal/<SYMBOL>.csv`
-- IN/OUT labeled stream: `stocks/nepal/<SYMBOL>/results/in_out_pattern_9_18.csv`
-- IN/OUT chart: `stocks/nepal/<SYMBOL>/results/in_out_pattern_9_18_visualization.png`
-- Complete-pattern transition summary: `stocks/nepal/<SYMBOL>/results/pattern_transition_2to1.txt`
-- Transition examples with dates: `stocks/nepal/<SYMBOL>/results/pattern_transition_2to1_examples.csv`
+- IN/OUT labeled stream: `stocks/nepal/<SYMBOL>/results/csv/in_out_pattern_9_18.csv`
+- IN/OUT chart: `stocks/nepal/<SYMBOL>/results/png/in_out_pattern_9_18_visualization.png`
+- Complete-pattern transition summary: `stocks/nepal/<SYMBOL>/results/txt/in_out_up_down_9_18.txt`
+- Transition examples with dates: `stocks/nepal/<SYMBOL>/results/csv/pattern_transition_2to1_examples.csv`
 
 Note:
 - `analyze_nepal_stock.py` now auto-downloads NEPSE CSV to
@@ -127,37 +127,37 @@ Full run for `HIDCL`:
 
 What is automatic:
 - `pattern_detector_v2.py` reads:
-  - `stocks/nepal/<SYMBOL>/results/highs_lows_pattern_9_18.csv`
+  - `stocks/nepal/<SYMBOL>/results/csv/highs_lows_pattern_9_18.csv`
 - It writes:
-  - `stocks/nepal/<SYMBOL>/results/in_out_pattern_9_18.csv`
+  - `stocks/nepal/<SYMBOL>/results/csv/in_out_pattern_9_18.csv`
 - `transition_pattern_analysis.py` then reads that file and writes all transition reports in the same `results/` folder.
 
 Most human-friendly outputs:
-- `stocks/nepal/<SYMBOL>/results/transition_clean_prev2_to_next.txt`
+- `stocks/nepal/<SYMBOL>/results/txt/transition_clean_prev2_to_next.txt`
   - grouped `prev2 -> next` combinations
-- `stocks/nepal/<SYMBOL>/results/transition_clean_prev2_priority.txt`
+- `stocks/nepal/<SYMBOL>/results/txt/transition_clean_prev2_priority.txt`
   - pattern-first next signal with strong-swing fallback
-- `stocks/nepal/<SYMBOL>/results/transition_clean_prev2_confirmed.txt`
+- `stocks/nepal/<SYMBOL>/results/txt/transition_clean_prev2_confirmed.txt`
   - `prev2 -> next` only when the next event confirms full 4-point completion
-- `stocks/nepal/<SYMBOL>/results/pattern_transition_2to1.txt`
+- `stocks/nepal/<SYMBOL>/results/txt/in_out_up_down_9_18.txt`
   - complete-pattern level transitions using immediate valid 4-point patterns:
     `IN_UP/IN_DOWN + IN_UP/IN_DOWN -> next IN_UP/IN_DOWN`
-- `stocks/nepal/<SYMBOL>/results/transition_readable_report_clean.md`
+- `stocks/nepal/<SYMBOL>/results/txt/transition_readable_report_clean.md`
   - easy summary without `INVALID`
 
 Key input/output path flow:
 - Input raw CSV (auto-created if missing): `data/nepal/<SYMBOL>.csv`
-- Zigzag source for pattern detector: `stocks/nepal/<SYMBOL>/results/highs_lows_pattern_9_18.csv`
-- Labeled pattern stream: `stocks/nepal/<SYMBOL>/results/in_out_pattern_9_18.csv`
-- Combination report: `stocks/nepal/<SYMBOL>/results/transition_clean_prev2_to_next.txt`
-- Priority combo report: `stocks/nepal/<SYMBOL>/results/transition_clean_prev2_priority.txt`
-- Confirmed combo report: `stocks/nepal/<SYMBOL>/results/transition_clean_prev2_confirmed.txt`
-- Complete-pattern transition report: `stocks/nepal/<SYMBOL>/results/pattern_transition_2to1.txt`
+- Zigzag source for pattern detector: `stocks/nepal/<SYMBOL>/results/csv/highs_lows_pattern_9_18.csv`
+- Labeled pattern stream: `stocks/nepal/<SYMBOL>/results/csv/in_out_pattern_9_18.csv`
+- Combination report: `stocks/nepal/<SYMBOL>/results/txt/transition_clean_prev2_to_next.txt`
+- Priority combo report: `stocks/nepal/<SYMBOL>/results/txt/transition_clean_prev2_priority.txt`
+- Confirmed combo report: `stocks/nepal/<SYMBOL>/results/txt/transition_clean_prev2_confirmed.txt`
+- Complete-pattern transition report: `stocks/nepal/<SYMBOL>/results/txt/in_out_up_down_9_18.txt`
 
 Pattern-level outputs from `transition_pattern_analysis.py`:
 - `pattern_completed_sequence.csv`
   - ordered list of complete valid 4-point patterns
-- `pattern_transition_2to1.csv` / `.txt`
+- `pattern_transition_2to1.csv` / `txt/in_out_up_down_9_18.txt`
   - immediate `Pattern1 + Pattern2 -> Pattern3` counts/probabilities
 - `pattern_transition_2to1_examples.csv`
   - date ranges for each example transition in human-readable month labels

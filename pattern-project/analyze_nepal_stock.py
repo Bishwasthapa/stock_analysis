@@ -572,30 +572,33 @@ def save_results(df: pd.DataFrame, fig, symbol: str, output_dir: str, short_span
     Save the chart as an image and the annotated data as CSV.
     Also save the zigzag points as a separate CSV for pattern detection.
     """
-    os.makedirs(output_dir, exist_ok=True)
+    csv_dir = os.path.join(output_dir, "csv")
+    png_dir = os.path.join(output_dir, "png")
+    os.makedirs(csv_dir, exist_ok=True)
+    os.makedirs(png_dir, exist_ok=True)
     
     # Save main EMA chart
     img_name = f'ema_crossover_{short_span}_{long_span}.png'
-    img_path = os.path.join(output_dir, img_name)
+    img_path = os.path.join(png_dir, img_name)
     fig.savefig(img_path, dpi=300, bbox_inches='tight')
     print(f"✓ EMA chart saved: {img_path}")
     
     # Save highs/lows chart
     img_name_hl = f'highs_lows_pattern_{short_span}_{long_span}.png'
-    img_path_hl = os.path.join(output_dir, img_name_hl)
+    img_path_hl = os.path.join(png_dir, img_name_hl)
     # Note: fig_hl is generated in main, we'll save it there
     print(f"✓ Highs/lows pattern chart saved: {img_path_hl}")
     
     # Save data
     csv_name = f'ema_analysis_{short_span}_{long_span}.csv'
-    csv_path = os.path.join(output_dir, csv_name)
+    csv_path = os.path.join(csv_dir, csv_name)
     df.to_csv(csv_path, index=False)
     print(f"✓ Data saved: {csv_path}")
     
     # Save zigzag points for pattern detection
     if points:
         zigzag_csv_name = f'highs_lows_pattern_{short_span}_{long_span}.csv'
-        zigzag_csv_path = os.path.join(output_dir, zigzag_csv_name)
+        zigzag_csv_path = os.path.join(csv_dir, zigzag_csv_name)
         zigzag_df = pd.DataFrame(points)
         zigzag_df.to_csv(zigzag_csv_path, index=False)
         print(f"✓ Zigzag CSV saved: {zigzag_csv_path}")
@@ -662,7 +665,7 @@ if __name__ == '__main__':
         
         # Save the highs/lows chart
         img_name_hl = f'highs_lows_pattern_{short_span}_{long_span}.png'
-        img_path_hl = os.path.join(output_dir, img_name_hl)
+        img_path_hl = os.path.join(output_dir, "png", img_name_hl)
         fig_hl.savefig(img_path_hl, dpi=300, bbox_inches='tight')
         print(f"✓ Highs/lows pattern chart saved: {img_path_hl}")
         

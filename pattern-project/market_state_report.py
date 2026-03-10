@@ -2,9 +2,9 @@
 Build a concise market-state report from existing pattern outputs.
 
 For each symbol, it reads:
-  - stocks/nepal/<SYMBOL>/results/in_out_pattern_9_18.csv
-  - stocks/nepal/<SYMBOL>/results/transition_clean_prev2_to_next.csv
-  - stocks/nepal/<SYMBOL>/results/transition_train_recent_validation.csv
+  - stocks/nepal/<SYMBOL>/results/csv/in_out_pattern_9_18.csv
+  - stocks/nepal/<SYMBOL>/results/csv/transition_clean_prev2_to_next.csv
+  - stocks/nepal/<SYMBOL>/results/csv/transition_train_recent_validation.csv
 
 And outputs:
   - latest clean 2-state combo
@@ -78,9 +78,9 @@ def drift_status(validation_rows: List[dict], prev2: Tuple[str, str]) -> str:
 
 def symbol_report(symbol: str, base_dir: Path) -> dict:
     results_dir = base_dir / symbol / "results"
-    inout_rows = read_csv(results_dir / "in_out_pattern_9_18.csv")
-    clean_rows = read_csv(results_dir / "transition_clean_prev2_to_next.csv")
-    validation_rows = read_csv(results_dir / "transition_train_recent_validation.csv")
+    inout_rows = read_csv(results_dir / "csv" / "in_out_pattern_9_18.csv")
+    clean_rows = read_csv(results_dir / "csv" / "transition_clean_prev2_to_next.csv")
+    validation_rows = read_csv(results_dir / "csv" / "transition_train_recent_validation.csv")
 
     if not inout_rows or not clean_rows:
         return {
@@ -129,7 +129,7 @@ def discover_symbols(base_dir: Path) -> List[str]:
     for p in sorted(base_dir.iterdir()):
         if not p.is_dir():
             continue
-        if (p / "results" / "in_out_pattern_9_18.csv").exists():
+        if (p / "results" / "csv" / "in_out_pattern_9_18.csv").exists():
             symbols.append(p.name)
     return symbols
 
