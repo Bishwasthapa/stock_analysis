@@ -30,12 +30,12 @@ A time-series analysis tool designed to identify recurring price patterns and st
 If you want everything generated in one run (EMA + IN/OUT + chain transitions):
 ```bash
 SYMBOL=NICA
-./venv/bin/python code/tools/run_symbol_pipeline.py $SYMBOL
+./venv/bin/python code/pipelines/run_nepal.py $SYMBOL
 ```
 
 Optional refresh controls:
 ```bash
-./venv/bin/python code/tools/run_symbol_pipeline.py $SYMBOL --refresh auto --max-stale-days 7
+./venv/bin/python code/pipelines/run_nepal.py $SYMBOL --refresh auto --max-stale-days 7
 ```
 
 ### 1. Core Pattern Workflow (Most Important)
@@ -44,9 +44,9 @@ This is the key flow: fetch/update CSV -> draw IN/OUT pattern -> compute immedia
 Copy-paste for any symbol:
 ```bash
 SYMBOL=NICA
-./venv/bin/python code/pattern/analyze_nepal_stock.py $SYMBOL --refresh auto
-./venv/bin/python code/pattern/pattern_detector_v2.py $SYMBOL
-./venv/bin/python code/pattern/transition_pattern_analysis.py $SYMBOL
+./venv/bin/python code/data_fetchers/nepal.py $SYMBOL --refresh auto
+./venv/bin/python code/algorithms/custom_in_out/detector.py $SYMBOL
+./venv/bin/python code/algorithms/custom_in_out/analyzer.py $SYMBOL
 ```
 
 Main outputs to inspect:
@@ -87,7 +87,7 @@ Key input/output path flow:
 - Labeled pattern stream: `stocks/nepal/<SYMBOL>/custom/csv/in_out_pattern_9_18.csv`
 - Complete-pattern transition report: `stocks/nepal/<SYMBOL>/custom/txt/in_out_up_down_9_18.txt`
 
-Pattern-level outputs from `transition_pattern_analysis.py`:
+Pattern-level outputs from `analyzer.py`:
 - `pattern_completed_sequence.csv`
   - ordered list of complete valid 4-point patterns
 - `transition_pattern_path_9_18.csv` / `txt/transition_pattern_path_9_18.txt`

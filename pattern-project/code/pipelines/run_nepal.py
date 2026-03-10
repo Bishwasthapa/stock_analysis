@@ -2,12 +2,12 @@
 One-command pattern runner for a Nepal stock symbol.
 
 Runs, in order:
-1) code/pattern/analyze_nepal_stock.py
-2) code/pattern/pattern_detector_v2.py
-3) code/pattern/transition_pattern_analysis.py
+1) code/data_fetchers/nepal.py
+2) code/algorithms/in_out/detector.py
+3) code/algorithms/in_out/analyzer.py
 
 Usage:
-  ./venv/bin/python code/tools/run_symbol_pipeline.py NICA
+  ./venv/bin/python code/pipelines/run_nepal.py NICA
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def main() -> None:
     run_cmd(
         [
             py,
-            "code/pattern/analyze_nepal_stock.py",
+            "code/data_fetchers/nepal.py",
             symbol,
             "--ema-short",
             str(args.ema_short),
@@ -51,8 +51,8 @@ def main() -> None:
             str(args.max_stale_days),
         ]
     )
-    run_cmd([py, "code/pattern/pattern_detector_v2.py", symbol])
-    run_cmd([py, "code/pattern/transition_pattern_analysis.py", symbol])
+    run_cmd([py, "code/algorithms/in_out/detector.py", symbol])
+    run_cmd([py, "code/algorithms/in_out/analyzer.py", symbol])
     print(f"\n✓ Pattern pipeline complete for {symbol}")
     print(f"  Results: stocks/nepal/{symbol}/custom/")
 
