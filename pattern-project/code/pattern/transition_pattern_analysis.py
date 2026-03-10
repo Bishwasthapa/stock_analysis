@@ -14,7 +14,7 @@ Outputs:
     - transition_top_actionable.csv
     - transition_easy_patterns.csv
     - transition_clean_prev2_to_next.csv
-    - transition_clean_prev2_to_swing.csv
+    - transition_pattern_path_9_18.csv
     - transition_clean_prev2_priority.csv
     - transition_clean_prev2_confirmed.csv
     - transition_confirmed_examples.csv
@@ -22,9 +22,8 @@ Outputs:
     - pattern_transition_2to1.csv
     - pattern_transition_2to1_examples.csv
   txt/ (kept):
-    - in_out_up_down_9_18.txt
-    - in_out_up_down_9_18_chain.txt
-    - transition_clean_prev2_to_swing.txt
+    - transition_pattern_chain_9_18.txt
+    - transition_pattern_path_9_18.txt
 """
 
 from __future__ import annotations
@@ -335,23 +334,31 @@ def analyze(
         if a not in keep_tokens or b not in keep_tokens:
             continue
 
+        # Find the path of intermediate swings until the next valid pattern
         j = i
+        intermediate_path = []
         while j < len(labels) and labels[j] not in keep_tokens:
+            st = swing_types[j]
+            if st == "HIGH":
+                intermediate_path.append("INVALID_UP")
+            elif st == "LOW":
+                intermediate_path.append("INVALID_DOWN")
             j += 1
+            
         if j >= len(labels):
             continue
-
+            
         nxt = labels[j]
         clean_next_counter[(a, b)][nxt] += 1
-
-        st = swing_types[j]
-        if st == "HIGH":
-            swing_label = "SWING_HIGH"
-        elif st == "LOW":
-            swing_label = "SWING_LOW"
+        
+        # Build the full path string: e.g. "INVALID_UP -> INVALID_DOWN -> IN_UP"
+        # Or just "IN_UP" if there were no intermediate invalid swings
+        if intermediate_path:
+            full_path = " -> ".join(intermediate_path) + " -> " + nxt
         else:
-            swing_label = "SWING_UNKNOWN"
-        clean_swing_counter[(a, b)][swing_label] += 1
+            full_path = nxt
+            
+        clean_swing_counter[(a, b)][full_path] += 1
 
     clean_full_rows = []
     grouped = defaultdict(list)
@@ -395,40 +402,40 @@ def analyze(
             row = {
                 "prev_2_a": a,
                 "prev_2_b": b,
-                "swing_result": swing_label,
+                "path_result": swing_label,
                 "count": cnt,
                 "total_context_count": total_ctx,
-                "prob_swing_given_prev2": f"{(cnt / total_ctx):.4f}",
+                "prob_path_given_prev2": f"{(cnt / total_ctx):.4f}",
             }
             clean_swing_rows.append(row)
             grouped_swing[(a, b)].append(row)
 
     clean_swing_rows.sort(
-        key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["swing_result"])
+        key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["path_result"])
     )
     write_csv(
-        csv_dir / "transition_clean_prev2_to_swing.csv",
+        csv_dir / "transition_pattern_path_9_18.csv",
         [
             "prev_2_a",
             "prev_2_b",
-            "swing_result",
+            "path_result",
             "count",
             "total_context_count",
-            "prob_swing_given_prev2",
+            "prob_path_given_prev2",
         ],
         clean_swing_rows,
     )
 
-    clean_swing_txt = txt_dir / "transition_clean_prev2_to_swing.txt"
+    clean_swing_txt = txt_dir / "transition_pattern_path_9_18.txt"
     with clean_swing_txt.open("w", encoding="utf-8") as f:
-        f.write("Clean Prev2 -> Swing combinations (valid inputs only, INVALID skipped)\n\n")
+        f.write("Pattern Path combinations (valid inputs, tracking invalid moves until next valid pattern)\n\n")
         for key in sorted(grouped_swing.keys()):
             left, right = key
             f.write(f"{left} + {right}:\n")
-            for row in sorted(grouped_swing[key], key=lambda x: (-int(x["count"]), x["swing_result"])):
-                p = float(row["prob_swing_given_prev2"]) * 100
+            for row in sorted(grouped_swing[key], key=lambda x: (-int(x["count"]), x["path_result"])):
+                p = float(row["prob_path_given_prev2"]) * 100
                 f.write(
-                    f"  -> {row['swing_result']} | count={row['count']}/{row['total_context_count']} "
+                    f"  -> {row['path_result']} | count={row['count']}/{row['total_context_count']} "
                     f"({p:.2f}%)\n"
                 )
             f.write("\n")
@@ -854,46 +861,30 @@ def analyze(
         pat_examples,
     )
 
-    pat_txt = txt_dir / "in_out_up_down_9_18.txt"
-    with pat_txt.open("w", encoding="utf-8") as f:
-        f.write("Pattern-level transitions (complete 0,1,2,3 patterns only)\n")
-        f.write("Dates shown are the 0-point of each pattern window.\n\n")
-        example_map: Dict[Context, List[dict]] = defaultdict(list)
-        for ex in pat_examples:
-            example_map[(ex["prev_2_a"], ex["prev_2_b"], ex["next"])].append(ex)
-
-        for key in sorted(pat_grouped.keys()):
-            left, right = key
-            f.write(f"{left} + {right}:\n")
-            for row in sorted(pat_grouped[key], key=lambda x: (-int(x["count"]), x["next"])):
-                p = float(row["prob_next_pattern_given_prev2"]) * 100
-                f.write(
-                    f"  -> {row['next']} | count={row['count']}/{row['total_context_count']} "
-                    f"({p:.2f}%)\n"
-                )
-                ex_list = example_map.get((left, right, row["next"]), [])
-                if ex_list:
-                    for ex in ex_list:
-                        f.write(
-                            f"     dates: {ex['a_date_0_label']} + {ex['b_date_0_label']} -> {ex['c_date_0_label']}\n"
-                        )
-            f.write("\n")
+    # The `in_out_up_down_9_18.txt` file was previously generated here,
+    # but it was removed in favor of `transition_pattern_path_9_18.txt` which provides
+    # the exact same transition data but also tracks intermediate invalid swings.
 
     # Chain view: explicit sliding sequence (A+B->C then B+C->D)
-    chain_txt = txt_dir / "in_out_up_down_9_18_chain.txt"
+    chain_txt = txt_dir / "transition_pattern_chain_9_18.txt"
     with chain_txt.open("w", encoding="utf-8") as f:
         f.write("Pattern chain (immediate sequence, sliding window)\n")
         f.write("Each line uses consecutive complete patterns.\n\n")
+        
         for i, p in enumerate(hybrid_chain):
             f.write(f"{i+1}. {p['pattern_token']} @ {p['date_0_label']}\n")
-        f.write("\nTransitions:\n")
+                    
+        f.write("\nTransitions (Strict Patterns Only):\n")
         for i in range(2, len(hybrid_chain)):
             a = hybrid_chain[i-2]
             b = hybrid_chain[i-1]
             c = hybrid_chain[i]
+            
+            # Base probability for just reaching pattern C
             total_ctx = sum(pat_counter.get((a['pattern_token'], b['pattern_token']), {}).values())
             hit_count = pat_counter.get((a['pattern_token'], b['pattern_token']), {}).get(c['pattern_token'], 0)
             pct = (hit_count / total_ctx * 100.0) if total_ctx else 0.0
+                
             f.write(
                 f"{a['pattern_token']} + {b['pattern_token']} -> {c['pattern_token']} | "
                 f"count={hit_count}/{total_ctx} ({pct:.2f}%) | "
@@ -1002,15 +993,14 @@ def main() -> None:
     print(f"  - {csv_dir / 'transition_top_actionable.csv'}")
     print(f"  - {csv_dir / 'transition_easy_patterns.csv'}")
     print(f"  - {csv_dir / 'transition_clean_prev2_to_next.csv'}")
-    print(f"  - {csv_dir / 'transition_clean_prev2_to_swing.csv'}")
-    print(f"  - {txt_dir / 'transition_clean_prev2_to_swing.txt'}")
+    print(f"  - {csv_dir / 'transition_pattern_path_9_18.csv'}")
+    print(f"  - {txt_dir / 'transition_pattern_path_9_18.txt'}")
     print(f"  - {csv_dir / 'transition_clean_prev2_priority.csv'}")
     print(f"  - {csv_dir / 'transition_clean_prev2_confirmed.csv'}")
     print(f"  - {csv_dir / 'transition_confirmed_examples.csv'}")
     print(f"  - {csv_dir / 'pattern_completed_sequence.csv'}")
     print(f"  - {csv_dir / 'pattern_transition_2to1.csv'}")
-    print(f"  - {txt_dir / 'in_out_up_down_9_18.txt'}")
-    print(f"  - {txt_dir / 'in_out_up_down_9_18_chain.txt'}")
+    print(f"  - {txt_dir / 'transition_pattern_chain_9_18.txt'}")
     print(f"  - {csv_dir / 'pattern_transition_2to1_examples.csv'}")
 
 

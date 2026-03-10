@@ -1,0 +1,33 @@
+Pattern Path combinations (valid inputs, tracking invalid moves until next valid pattern)
+
+IN_DOWN + IN_DOWN:
+  -> IN_DOWN | count=10/15 (66.67%)
+  -> IN_UP | count=2/15 (13.33%)
+  -> INVALID_UP -> INVALID_DOWN -> OUT_DOWN | count=1/15 (6.67%)
+  -> INVALID_UP -> OUT_UP | count=1/15 (6.67%)
+  -> OUT_DOWN | count=1/15 (6.67%)
+
+IN_DOWN + IN_UP:
+  -> IN_UP | count=2/2 (100.00%)
+
+IN_DOWN + OUT_DOWN:
+  -> IN_DOWN | count=1/1 (100.00%)
+
+IN_UP + IN_DOWN:
+  -> IN_DOWN | count=1/1 (100.00%)
+
+IN_UP + IN_UP:
+  -> IN_UP | count=5/8 (62.50%)
+  -> INVALID_DOWN -> OUT_DOWN | count=1/8 (12.50%)
+  -> IN_DOWN | count=1/8 (12.50%)
+  -> OUT_UP | count=1/8 (12.50%)
+
+IN_UP + OUT_UP:
+  -> IN_UP | count=1/1 (100.00%)
+
+OUT_DOWN + IN_DOWN:
+  -> IN_DOWN | count=4/4 (100.00%)
+
+OUT_UP + IN_UP:
+  -> IN_UP | count=2/2 (100.00%)
+

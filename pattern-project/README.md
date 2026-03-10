@@ -53,7 +53,7 @@ Main outputs to inspect:
 - Raw/fetched CSV: `data/nepal/<SYMBOL>.csv`
 - IN/OUT labeled stream: `stocks/nepal/<SYMBOL>/custom/csv/in_out_pattern_9_18.csv`
 - IN/OUT chart: `stocks/nepal/<SYMBOL>/custom/png/in_out_pattern_9_18_visualization.png`
-- Complete-pattern transition summary: `stocks/nepal/<SYMBOL>/custom/txt/in_out_up_down_9_18.txt`
+- Transition pattern path matching: `stocks/nepal/<SYMBOL>/custom/txt/transition_pattern_path_9_18.txt`
 - Transition examples with dates: `stocks/nepal/<SYMBOL>/custom/csv/pattern_transition_2to1_examples.csv`
 
 Algorithm details:
@@ -90,8 +90,8 @@ Key input/output path flow:
 Pattern-level outputs from `transition_pattern_analysis.py`:
 - `pattern_completed_sequence.csv`
   - ordered list of complete valid 4-point patterns
-- `pattern_transition_2to1.csv` / `txt/in_out_up_down_9_18.txt`
-  - immediate `Pattern1 + Pattern2 -> Pattern3` counts/probabilities
+- `transition_pattern_path_9_18.csv` / `txt/transition_pattern_path_9_18.txt`
+  - immediate `Pattern1 + Pattern2 -> [Invalid Path] -> Pattern3` counts/probabilities
 - `pattern_transition_2to1_examples.csv`
   - date ranges for each example transition in human-readable month labels
 

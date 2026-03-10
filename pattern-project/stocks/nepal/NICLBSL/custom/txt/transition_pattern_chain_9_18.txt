@@ -1,0 +1,27 @@
+Pattern chain (immediate sequence, sliding window)
+Each line uses consecutive complete patterns.
+
+1. OUT_DOWN @ 19 May 2021
+2. IN_DOWN @ 03 Aug 2021
+3. IN_DOWN @ 01 Nov 2021
+4. IN_UP @ 23 Jun 2022
+5. OUT_DOWN @ 06 Nov 2022
+6. OUT_DOWN @ 27 Jun 2023
+7. OUT_DOWN @ 18 Dec 2023
+8. IN_UP @ 03 Mar 2024
+9. OUT_UP @ 29 Sep 2024
+10. IN_DOWN @ 17 Nov 2024
+11. IN_DOWN @ 17 Feb 2025
+12. OUT_UP @ 16 Oct 2025
+
+Transitions (Strict Patterns Only):
+OUT_DOWN + IN_DOWN -> IN_DOWN | count=1/1 (100.00%) | dates: 19 May 2021 + 03 Aug 2021 -> 01 Nov 2021
+IN_DOWN + IN_DOWN -> IN_UP | count=1/2 (50.00%) | dates: 03 Aug 2021 + 01 Nov 2021 -> 23 Jun 2022
+IN_DOWN + IN_UP -> OUT_DOWN | count=1/1 (100.00%) | dates: 01 Nov 2021 + 23 Jun 2022 -> 06 Nov 2022
+IN_UP + OUT_DOWN -> OUT_DOWN | count=1/1 (100.00%) | dates: 23 Jun 2022 + 06 Nov 2022 -> 27 Jun 2023
+OUT_DOWN + OUT_DOWN -> OUT_DOWN | count=1/2 (50.00%) | dates: 06 Nov 2022 + 27 Jun 2023 -> 18 Dec 2023
+OUT_DOWN + OUT_DOWN -> IN_UP | count=1/2 (50.00%) | dates: 27 Jun 2023 + 18 Dec 2023 -> 03 Mar 2024
+OUT_DOWN + IN_UP -> OUT_UP | count=1/1 (100.00%) | dates: 18 Dec 2023 + 03 Mar 2024 -> 29 Sep 2024
+IN_UP + OUT_UP -> IN_DOWN | count=1/1 (100.00%) | dates: 03 Mar 2024 + 29 Sep 2024 -> 17 Nov 2024
+OUT_UP + IN_DOWN -> IN_DOWN | count=1/1 (100.00%) | dates: 29 Sep 2024 + 17 Nov 2024 -> 17 Feb 2025
+IN_DOWN + IN_DOWN -> OUT_UP | count=1/2 (50.00%) | dates: 17 Nov 2024 + 17 Feb 2025 -> 16 Oct 2025
