@@ -49,12 +49,27 @@ SYMBOL=NICA
 ./venv/bin/python code/algorithms/custom_in_out/analyzer.py $SYMBOL
 ```
 
-Main outputs to inspect:
-- Raw/fetched CSV: `data/nepal/<SYMBOL>.csv`
-- IN/OUT labeled stream: `results/nepal/<SYMBOL>/in_out/csv/in_out_pattern_9_18.csv`
-- IN/OUT chart: `results/nepal/<SYMBOL>/in_out/png/in_out_pattern_9_18_visualization.png`
-- Transition pattern path matching: `results/nepal/<SYMBOL>/in_out/txt/transition_pattern_path_9_18.txt`
-- Transition examples with dates: `results/nepal/<SYMBOL>/in_out/csv/pattern_transition_2to1_examples.csv`
+### 💹 Strategy & Recommendations (Read these first)
+High-level signals generated from the patterns:
+- `results/nepal/<SYMBOL>/in_out/csv/strategy_top_setups.csv` - **Best patterns found.**
+- `results/nepal/<SYMBOL>/in_out/csv/strategy_recommendations.csv` - "IF/THEN" rules.
+- `results/nepal/<SYMBOL>/in_out/csv/strategy_pattern_reliability.csv` - Compares past vs present performance.
+
+### 📈 Movement & History (The "How it happened")
+Detailed trail of the market patterns:
+- `results/nepal/<SYMBOL>/in_out/csv/movement_history_log.csv` - Full record of identified patterns.
+- `results/nepal/<SYMBOL>/in_out/txt/transition_pattern_chain_9_18.txt` - Human-readable sequence.
+- `results/nepal/<SYMBOL>/in_out/csv/movement_detailed_paths.csv` - Includes intermediate "invalid" moves.
+
+### 🔮 Forecasts & Predictions
+Probability-based guesses for the next move:
+- `results/nepal/<SYMBOL>/in_out/csv/forecast_next_signal.csv` - Next likely swing or pattern.
+- `results/nepal/<SYMBOL>/in_out/csv/forecast_confirmed_completions.csv` - High-probability 4-point completions.
+
+### 🔢 Statistics & Raw Data
+The underlying math:
+- `results/nepal/<SYMBOL>/in_out/csv/stats_token_performance.csv` - Pct move summary per label.
+- `results/nepal/<SYMBOL>/in_out/csv/stats_raw_transition_matrix.csv` - Full transition database.
 
 Algorithm details:
 - See `ALGORITHM.md` for the exact logic used to draw the IN/OUT chart, how valid patterns are defined, the overlapping priority rules for trend starts (`role 0`), and how chain transitions are computed.

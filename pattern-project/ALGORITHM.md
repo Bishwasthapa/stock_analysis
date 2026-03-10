@@ -4,7 +4,7 @@ This document explains how we draw `in_out_pattern_9_18_visualization.png`, how 
 
 ## 1) High/Low Extraction (Crossover-Based)
 
-Source: `code/pattern/analyze_nepal_stock.py`
+Source: `code/data_fetchers/nepal.py`
 
 Rules:
 1. Compute EMA crossovers (default `9/18`).
@@ -14,12 +14,12 @@ Rules:
 5. Enforce alternation: `HIGH -> LOW -> HIGH -> LOW ...`.
 
 Outputs:
-- CSV: `stocks/nepal/<SYMBOL>/custom/csv/highs_lows_pattern_9_18.csv`
-- PNG: `stocks/nepal/<SYMBOL>/custom/png/highs_lows_pattern_9_18.png`
+- CSV: `results/nepal/<SYMBOL>/in_out/csv/highs_lows_pattern_9_18.csv`
+- PNG: `results/nepal/<SYMBOL>/in_out/png/highs_lows_pattern_9_18.png`
 
 ## 2) Valid Pattern Definition (0,1,2,3)
 
-Source: `code/pattern/pattern_detector_v2.py`
+Source: `code/algorithms/in_out/detector.py`
 
 Valid patterns are *only* complete 4-point windows:
 
@@ -48,12 +48,12 @@ Labels:
 - `OUT_UP` / `OUT_DOWN`: Point `0` of valid up/down patterns that do *not* overlap with a previous pattern.
 
 Outputs:
-- CSV: `stocks/nepal/<SYMBOL>/custom/csv/in_out_pattern_9_18.csv`
-- PNG: `stocks/nepal/<SYMBOL>/custom/png/in_out_pattern_9_18_visualization.png`
+- CSV: `results/nepal/<SYMBOL>/in_out/csv/in_out_pattern_9_18.csv`
+- PNG: `results/nepal/<SYMBOL>/in_out/png/in_out_pattern_9_18_visualization.png`
 
 ## 4) Chain Pattern Output (Main Algorithm)
 
-Source: `code/pattern/transition_pattern_analysis.py`
+Source: `code/algorithms/in_out/analyzer.py`
 
 This is the main market-footprint algorithm:
 
@@ -63,13 +63,8 @@ This is the main market-footprint algorithm:
 4. Output dates using each pattern’s **0-point** date.
 
 Main output:
-- `stocks/nepal/<SYMBOL>/custom/txt/in_out_up_down_9_18_chain.txt`
+- `results/nepal/<SYMBOL>/in_out/txt/transition_pattern_chain_9_18.txt`
 
 Support output:
-- `stocks/nepal/<SYMBOL>/custom/txt/in_out_up_down_9_18.txt`
-  (same transitions, aggregated by counts/probabilities)
-
-## 5) Swing Fallback (Optional)
-
-If you want a swing-only view for the same labels:
-- `stocks/nepal/<SYMBOL>/custom/txt/transition_clean_prev2_to_swing.txt`
+- `results/nepal/<SYMBOL>/in_out/csv/movement_detailed_paths.csv`
+  (same entries, but includes intermediate invalid swings)

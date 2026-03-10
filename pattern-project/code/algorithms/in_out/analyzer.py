@@ -7,20 +7,23 @@ Input:
 
 Outputs:
   csv/:
-    - transition_token_summary.csv
-    - transition_2to1_full.csv
-    - transition_context_summary.csv
-    - transition_train_recent_validation.csv
-    - transition_top_actionable.csv
-    - transition_easy_patterns.csv
-    - transition_clean_prev2_to_next.csv
-    - transition_pattern_path_9_18.csv
-    - transition_clean_prev2_priority.csv
-    - transition_clean_prev2_confirmed.csv
-    - transition_confirmed_examples.csv
-    - pattern_completed_sequence.csv
-    - pattern_transition_2to1.csv
-    - pattern_transition_2to1_examples.csv
+    - stats_token_performance.csv
+    - stats_raw_transition_matrix.csv
+    - stats_context_stability.csv
+    - strategy_pattern_reliability.csv
+    - strategy_top_setups.csv
+    - strategy_recommendations.csv
+    - movement_clean_transitions.csv
+    - movement_detailed_paths.csv
+    - forecast_next_signal.csv
+    - forecast_confirmed_completions.csv
+    - forecast_completion_examples.csv
+    - movement_history_log.csv
+    - movement_pattern_transitions.csv
+    - movement_transition_examples.csv
+  txt/ (kept):
+    - transition_pattern_chain_9_18.txt
+    - transition_pattern_path_9_18.txt
   txt/ (kept):
     - transition_pattern_chain_9_18.txt
     - transition_pattern_path_9_18.txt
@@ -122,7 +125,7 @@ def analyze(
             }
         )
     write_csv(
-        csv_dir / "transition_token_summary.csv",
+        csv_dir / "stats_token_performance.csv",
         ["label", "count", "percent"],
         token_rows,
     )
@@ -168,7 +171,7 @@ def analyze(
             )
 
     write_csv(
-        csv_dir / "transition_2to1_full.csv",
+        csv_dir / "stats_raw_transition_matrix.csv",
         ["prev_2", "next", "count", "total_context_count", "prob_next_given_prev2"],
         full_rows,
     )
@@ -177,7 +180,7 @@ def analyze(
         key=lambda r: (-float(r["score_count_x_prob"]), -int(r["total_context_count"])),
     )
     write_csv(
-        csv_dir / "transition_context_summary.csv",
+        csv_dir / "stats_context_summary.csv",
         [
             "prev_2",
             "total_context_count",
@@ -247,7 +250,7 @@ def analyze(
         validation_rows, key=lambda r: (-int(r["train_count"]), -int(r["recent_count"]))
     )
     write_csv(
-        csv_dir / "transition_train_recent_validation.csv",
+        csv_dir / "strategy_pattern_reliability.csv",
         [
             "prev_2",
             "train_count",
@@ -267,7 +270,7 @@ def analyze(
         r for r in context_rows_sorted if int(r["total_context_count"]) >= min_context_count
     ]
     write_csv(
-        csv_dir / "transition_top_actionable.csv",
+        csv_dir / "strategy_top_setups.csv",
         [
             "prev_2",
             "total_context_count",
@@ -305,7 +308,7 @@ def analyze(
         )
 
     write_csv(
-        csv_dir / "transition_easy_patterns.csv",
+        csv_dir / "strategy_recommendations.csv",
         ["rule", "prev_2", "predicted_next", "confidence", "count", "strength"],
         easy_rows,
     )
@@ -380,7 +383,7 @@ def analyze(
         key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["next"])
     )
     write_csv(
-        csv_dir / "transition_clean_prev2_to_next.csv",
+        csv_dir / "movement_clean_transitions.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -414,7 +417,7 @@ def analyze(
         key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["path_result"])
     )
     write_csv(
-        csv_dir / "transition_pattern_path_9_18.csv",
+        csv_dir / "movement_detailed_paths.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -523,7 +526,7 @@ def analyze(
         key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["next"])
     )
     write_csv(
-        csv_dir / "transition_clean_prev2_confirmed.csv",
+        csv_dir / "forecast_confirmed_completions.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -535,7 +538,7 @@ def analyze(
         confirmed_rows,
     )
     write_csv(
-        csv_dir / "transition_confirmed_examples.csv",
+        csv_dir / "forecast_completion_examples.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -620,7 +623,7 @@ def analyze(
         key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["next_signal"])
     )
     write_csv(
-        csv_dir / "transition_clean_prev2_priority.csv",
+        csv_dir / "forecast_next_signal.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -712,7 +715,7 @@ def analyze(
 
     completed_patterns.sort(key=lambda r: r["idx_0"])
     write_csv(
-        csv_dir / "pattern_completed_sequence.csv",
+        csv_dir / "movement_history_log.csv",
         [
             "pattern_token",
             "trend_type",
@@ -828,7 +831,7 @@ def analyze(
         key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["next"])
     )
     write_csv(
-        csv_dir / "pattern_transition_2to1.csv",
+        csv_dir / "movement_pattern_transitions.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -840,7 +843,7 @@ def analyze(
         pat_rows,
     )
     write_csv(
-        csv_dir / "pattern_transition_2to1_examples.csv",
+        csv_dir / "movement_transition_examples.csv",
         [
             "prev_2_a",
             "prev_2_b",
@@ -986,22 +989,22 @@ def main() -> None:
         f"recent start idx {summary['recent_start_index']} ({summary['recent_start_date']})"
     )
     print("\nGenerated files:")
-    print(f"  - {csv_dir / 'transition_token_summary.csv'}")
-    print(f"  - {csv_dir / 'transition_2to1_full.csv'}")
-    print(f"  - {csv_dir / 'transition_context_summary.csv'}")
-    print(f"  - {csv_dir / 'transition_train_recent_validation.csv'}")
-    print(f"  - {csv_dir / 'transition_top_actionable.csv'}")
-    print(f"  - {csv_dir / 'transition_easy_patterns.csv'}")
-    print(f"  - {csv_dir / 'transition_clean_prev2_to_next.csv'}")
-    print(f"  - {csv_dir / 'transition_pattern_path_9_18.csv'}")
+    print(f"  - {csv_dir / 'stats_token_performance.csv'}")
+    print(f"  - {csv_dir / 'stats_raw_transition_matrix.csv'}")
+    print(f"  - {csv_dir / 'stats_context_summary.csv'}")
+    print(f"  - {csv_dir / 'strategy_pattern_reliability.csv'}")
+    print(f"  - {csv_dir / 'strategy_top_setups.csv'}")
+    print(f"  - {csv_dir / 'strategy_recommendations.csv'}")
+    print(f"  - {csv_dir / 'movement_clean_transitions.csv'}")
+    print(f"  - {csv_dir / 'movement_detailed_paths.csv'}")
     print(f"  - {txt_dir / 'transition_pattern_path_9_18.txt'}")
-    print(f"  - {csv_dir / 'transition_clean_prev2_priority.csv'}")
-    print(f"  - {csv_dir / 'transition_clean_prev2_confirmed.csv'}")
-    print(f"  - {csv_dir / 'transition_confirmed_examples.csv'}")
-    print(f"  - {csv_dir / 'pattern_completed_sequence.csv'}")
-    print(f"  - {csv_dir / 'pattern_transition_2to1.csv'}")
+    print(f"  - {csv_dir / 'forecast_next_signal.csv'}")
+    print(f"  - {csv_dir / 'forecast_confirmed_completions.csv'}")
+    print(f"  - {csv_dir / 'forecast_completion_examples.csv'}")
+    print(f"  - {csv_dir / 'movement_history_log.csv'}")
+    print(f"  - {csv_dir / 'movement_pattern_transitions.csv'}")
     print(f"  - {txt_dir / 'transition_pattern_chain_9_18.txt'}")
-    print(f"  - {csv_dir / 'pattern_transition_2to1_examples.csv'}")
+    print(f"  - {csv_dir / 'movement_transition_examples.csv'}")
 
 
 if __name__ == "__main__":
