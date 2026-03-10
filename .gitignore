@@ -1,5 +1,11 @@
-# Virtual Environment
+# Projects & Environments
+nepse/
+pattern-project/venv/
 nepal_env/
+
+# Data & Results (Generated)
+pattern-project/data/
+pattern-project/results/
 
 # Python Cache
 __pycache__/
@@ -10,5 +16,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Config Examples (Optional, but keeping local config for now as requested)
-# floorsheet_config.json
+# Miscellaneous
+queries.txt
+floorsheet_config.json
