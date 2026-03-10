@@ -1,0 +1,27 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+bin/
+lib/
+share/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data & Results (Calculated Artifacts)
+# We ignore these because they can be regenerated from the pipeline
+data/
+results/
+
+# Editor/OS specific
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Miscellaneous
+queries.txt
+.env
