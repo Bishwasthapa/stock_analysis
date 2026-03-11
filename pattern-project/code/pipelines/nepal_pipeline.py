@@ -2,12 +2,12 @@
 One-command pattern runner for a Nepal stock symbol.
 
 Runs, in order:
-1) code/data_fetchers/nepal.py
+1) code/algorithms/ema_viz.py
 2) code/algorithms/in_out/detector.py
 3) code/algorithms/in_out/analyzer.py
 
 Usage:
-  ./venv/bin/python code/pipelines/run_nepal.py NICA
+  ./venv/bin/python code/pipelines/nepal_pipeline.py NICA
 """
 
 from __future__ import annotations
@@ -18,8 +18,11 @@ import sys
 
 
 def run_cmd(cmd: list[str]) -> None:
+    import os
     print(f"\n$ {' '.join(cmd)}")
-    completed = subprocess.run(cmd)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = "." # Ensure project root is in path
+    completed = subprocess.run(cmd, env=env)
     if completed.returncode != 0:
         raise SystemExit(completed.returncode)
 
@@ -41,7 +44,7 @@ def main() -> None:
     run_cmd(
         [
             py,
-            "code/data_fetchers/nepal.py",
+            "code/algorithms/ema_viz.py",
             symbol,
             "--ema-short",
             str(args.ema_short),
