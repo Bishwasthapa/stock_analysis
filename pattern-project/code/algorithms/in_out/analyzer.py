@@ -827,7 +827,7 @@ def analyze(
     # the exact same transition data but also tracks intermediate invalid swings.
 
     # Chain view: explicit sliding sequence (A+B->C then B+C->D)
-    chain_txt = txt_dir / "transition_pattern_chain_9_18.txt"
+    chain_txt = txt_dir / "Intersecting_path_9_18.txt"
     with chain_txt.open("w", encoding="utf-8") as f:
         f.write("Pattern chain (immediate sequence, sliding window)\n")
         f.write("Each line uses consecutive complete patterns.\n\n")
@@ -852,62 +852,85 @@ def analyze(
                 f"dates: {a['date_0_label']} + {b['date_0_label']} -> {c['date_0_label']}\n"
             )
 
-    # Build iterative algorithm for transition_pattern_9_18.txt
+    # --- NEW STRATEGY ENGINE: SLIDING WINDOW (A + B -> C) ---
     all_patterns = find_all_valid_patterns(rows)
-    iterative_transitions = []
-    used_as_result = set()
+    # input1, input2: valid patterns, non-intersecting (chained or sequential)
+    # result: valid pattern (priority link/intersect) OR swing
+    # next iteration: input1 = input2 (last iteration's input2)
     
-    if completed_patterns:
-        current_a = completed_patterns[0]
-        
-        while True:
-            # Find B: >= current_a["idx_3"], skipping and not using any C from previous iterations
+    iterative_transitions = []
+    if len(completed_patterns) >= 2:
+        # Start with the first two patterns that don't intersect
+        p1_idx = 0
+        while p1_idx < len(completed_patterns) - 1:
+            p_a = completed_patterns[p1_idx]
+            
+            # Find the first p_b after p_a that doesn't intersect
             p_b = None
-            for p in completed_patterns:
-                if int(p["idx_0"]) >= int(current_a["idx_3"]) and p["idx_0"] not in used_as_result:
-                    p_b = p
+            p2_idx = -1
+            for j in range(p1_idx + 1, len(completed_patterns)):
+                cand_b = completed_patterns[j]
+                if cand_b["idx_0"] >= p_a["idx_3"]: # Chained (==) or Sequential (>)
+                    p_b = cand_b
+                    p2_idx = j
                     break
-                    
+            
             if not p_b:
                 break
                 
-            # Find C: >= p_b["idx_2"] using ALL PATTERNS since C is an output that CAN intersect!
-            p_c = None
-            for p in all_patterns:
-                if int(p["idx_0"]) >= int(p_b["idx_2"]):
-                    p_c = p
-                    break
-                    
-            if p_c:
-                intermediate_path = []
-                for j in range(int(p_b["idx_2"]), int(p_c["idx_0"])):
-                    if labels[j] not in keep_tokens:
-                        st = swing_types[j]
-                        if st == "HIGH":
-                            intermediate_path.append("INVALID_UP")
-                        elif st == "LOW":
-                            intermediate_path.append("INVALID_DOWN")
-                
-                if intermediate_path:
-                    c_label = " -> ".join(intermediate_path) + " -> " + p_c["pattern_token"]
+            # Now we have p_a (input1) and p_b (input2). Find outcome C.
+            # Outcome C priority:
+            # 1. Any pattern starting at or inside p_b (intersection or chain)
+            # 2. If no such pattern, next directional swing after p_b's end
+            
+            outcome_label = ""
+            outcome_pattern = None
+            
+            # 1. Look for a pattern starting at 0,1,2,3 of p_b (Priority: Linked/Chained/Intersecting)
+            for p_cand in all_patterns:
+                # Must start AFTER p_b starts
+                if p_cand["idx_0"] > p_b["idx_0"]:
+                    # Rule: starts in {0,1,2,3} of B -> IN
+                    if p_cand["idx_0"] <= p_b["idx_3"]:
+                        outcome_pattern = p_cand
+                        # Direction check
+                        dir_str = "UP" if p_cand["trend_type"] == "UPTREND" else "DOWN"
+                        outcome_label = f"IN_{dir_str}"
+                        break
+            
+            # 2. Fallback to swing if no linked pattern found
+            #    We look at the next swing in the master rows after p_b's end
+            if not outcome_pattern:
+                next_idx = p_b["idx_3"] + 1
+                if next_idx < len(rows):
+                    st = swing_types[next_idx]
+                    outcome_label = f"SWING_{st.upper()}"
                 else:
-                    c_label = p_c["pattern_token"]
-                    
-                iterative_transitions.append((current_a, p_b, p_c, c_label))
-                used_as_result.add(p_c["idx_0"])
-                
-            current_a = p_b
+                    outcome_label = "END_OF_DATA"
+            
+            iterative_transitions.append({
+                "a": p_a,
+                "b": p_b,
+                "c_label": outcome_label,
+                "c_pattern": outcome_pattern
+            })
+            
+            # SLIDING WINDOW: next input1 = current input2
+            p1_idx = p2_idx
 
     iter_counter: Dict[Context, Counter] = defaultdict(Counter)
-    for a, b, c, c_label in iterative_transitions:
-        ctx = (a["pattern_token"], b["pattern_token"])
-        iter_counter[ctx][c_label] += 1
+    for trans in iterative_transitions:
+        ctx = (trans["a"]["pattern_token"], trans["b"]["pattern_token"])
+        iter_counter[ctx][trans["c_label"]] += 1
 
-    iter_txt = txt_dir / "strategy_final_pattern_9_18.txt"
+    iter_txt = txt_dir / "Final_strategy_9_18.txt"
     with iter_txt.open("w", encoding="utf-8") as f:
-        f.write("Pattern iteration (A + B -> C)\n")
-        f.write("B starts >= A's point 3. C starts >= B's point 2.\n")
-        f.write("Next iteration input1 = B.\n\n")
+        f.write("Strategy Engine: Dual Pattern Context (A + B -> C)\n")
+        f.write("Rules:\n")
+        f.write("  - Inputs (A, B): Valid patterns, non-intersecting (chained or sequential).\n")
+        f.write("  - Naming: IN if linked to previous, OUT if separate.\n")
+        f.write("  - Output C: Highest priority = Pattern linked/intersecting B. Fallback = Next directional Swing.\n")
+        f.write("  - Iteration: Next input1 = Previous input2.\n\n")
         
         grouped_iter = defaultdict(list)
         for (a_token, b_token), cnts in sorted(iter_counter.items()):
@@ -928,9 +951,11 @@ def analyze(
                 f.write(f"  -> {row['c']} | count={row['count']}/{row['total']} ({row['pct']:.2f}%)\n")
             f.write("\n")
             
-        f.write("Chronological Iteration Sequences:\n")
-        for i, (a, b, c, c_label) in enumerate(iterative_transitions):
-            f.write(f"{i+1}. {a['pattern_token']} (@{a['date_0_label']}) + {b['pattern_token']} (@{b['date_0_label']}) -> {c_label} (@{c['date_0_label']})\n")
+        f.write("Chronological Strategy Sequences:\n")
+        for i, trans in enumerate(iterative_transitions):
+            a, b, c_label = trans["a"], trans["b"], trans["c_label"]
+            f.write(f"{i+1}. {a['pattern_token']} (@{a['date_0_label']}) + {b['pattern_token']} (@{b['date_0_label']}) -> {c_label}\n")
+
 
     stable_count = sum(1 for r in context_rows if r["stability"] == "STABLE")
     unstable_count = sum(1 for r in context_rows if r["stability"] == "UNSTABLE")
@@ -1048,8 +1073,8 @@ def main() -> None:
     print(f"  - {csv_dir / 'forecast_next_signal.csv'}")
     print(f"  - {csv_dir / 'forecast_confirmed_completions.csv'}")
     print(f"  - {csv_dir / 'movement_pattern_transitions.csv'}")
-    print(f"  - {txt_dir / 'transition_pattern_chain_9_18.txt'}")
-    print(f"  - {txt_dir / 'strategy_final_pattern_9_18.txt'}")
+    print(f"  - {txt_dir / 'Intersecting_path_9_18.txt'}")
+    print(f"  - {txt_dir / 'Final_strategy_9_18.txt'}")
 
 
 if __name__ == "__main__":

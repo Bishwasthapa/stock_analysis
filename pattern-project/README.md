@@ -53,13 +53,14 @@ SYMBOL=NICA
 High-level signals generated from the patterns:
 - `results/nepal/<SYMBOL>/in_out/csv/strategy_top_setups.csv` - **Best patterns found.**
 - `results/nepal/<SYMBOL>/in_out/csv/strategy_recommendations.csv` - "IF/THEN" rules.
-- `results/nepal/<SYMBOL>/in_out/csv/strategy_pattern_reliability.csv` - Compares past vs present performance.
+- `results/nepal/<SYMBOL>/in_out/txt/Final_strategy_9_18.txt` - **Detailed dual-pattern strategy sequences.**
+
+Detailed documentation of the custom strategy and traversal logic can be found in:
+[**code/algorithms/in_out/README.md**](file:///mnt/personal/stock/own_for_analysis/pattern-project/code/algorithms/in_out/README.md)
 
 ### 📈 Movement & History (The "How it happened")
 Detailed trail of the market patterns:
-- `results/nepal/<SYMBOL>/in_out/csv/movement_history_log.csv` - Full record of identified patterns.
-- `results/nepal/<SYMBOL>/in_out/txt/transition_pattern_chain_9_18.txt` - Human-readable sequence.
-- `results/nepal/<SYMBOL>/in_out/csv/movement_detailed_paths.csv` - Includes intermediate "invalid" moves.
+- `results/nepal/<SYMBOL>/in_out/txt/Intersecting_path_9_18.txt` - Human-readable sequence (Sequential chain).
 
 ### 🔮 Forecasts & Predictions
 Probability-based guesses for the next move:
