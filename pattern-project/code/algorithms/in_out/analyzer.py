@@ -429,19 +429,7 @@ def analyze(
         clean_swing_rows,
     )
 
-    clean_swing_txt = txt_dir / "transition_pattern_path_9_18.txt"
-    with clean_swing_txt.open("w", encoding="utf-8") as f:
-        f.write("Pattern Path combinations (valid inputs, tracking invalid moves until next valid pattern)\n\n")
-        for key in sorted(grouped_swing.keys()):
-            left, right = key
-            f.write(f"{left} + {right}:\n")
-            for row in sorted(grouped_swing[key], key=lambda x: (-int(x["count"]), x["path_result"])):
-                p = float(row["prob_path_given_prev2"]) * 100
-                f.write(
-                    f"  -> {row['path_result']} | count={row['count']}/{row['total_context_count']} "
-                    f"({p:.2f}%)\n"
-                )
-            f.write("\n")
+    # The `transition_pattern_path_9_18.txt` text format was removed to focus on strategy and chain files
 
     # 6B) Confirmed 4-point completion table:
     # Count prev2 -> next only when the "next" event can be traced to role 3
@@ -950,7 +938,7 @@ def analyze(
         ctx = (a["pattern_token"], b["pattern_token"])
         iter_counter[ctx][c_label] += 1
 
-    iter_txt = txt_dir / "transition_pattern_9_18.txt"
+    iter_txt = txt_dir / "strategy_final_pattern_9_18.txt"
     with iter_txt.open("w", encoding="utf-8") as f:
         f.write("Pattern iteration (A + B -> C)\n")
         f.write("B starts >= A's point 3. C starts >= B's point 2.\n")
@@ -1082,7 +1070,6 @@ def main() -> None:
     print(f"  - {csv_dir / 'strategy_recommendations.csv'}")
     print(f"  - {csv_dir / 'movement_clean_transitions.csv'}")
     print(f"  - {csv_dir / 'movement_detailed_paths.csv'}")
-    print(f"  - {txt_dir / 'transition_pattern_path_9_18.txt'}")
     print(f"  - {csv_dir / 'forecast_next_signal.csv'}")
     print(f"  - {csv_dir / 'forecast_confirmed_completions.csv'}")
     print(f"  - {csv_dir / 'forecast_completion_examples.csv'}")
@@ -1090,7 +1077,7 @@ def main() -> None:
     print(f"  - {csv_dir / 'movement_pattern_transitions.csv'}")
     print(f"  - {txt_dir / 'transition_pattern_chain_9_18.txt'}")
     print(f"  - {csv_dir / 'movement_transition_examples.csv'}")
-    print(f"  - {txt_dir / 'transition_pattern_9_18.txt'}")
+    print(f"  - {txt_dir / 'strategy_final_pattern_9_18.txt'}")
 
 
 if __name__ == "__main__":
