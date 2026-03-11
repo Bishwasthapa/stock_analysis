@@ -898,7 +898,7 @@ def analyze(
             # Find B: >= current_a["idx_3"], skipping and not using any C from previous iterations
             p_b = None
             for p in completed_patterns:
-                if p["idx_0"] >= current_a["idx_3"] and p["idx_0"] not in used_as_result:
+                if int(p["idx_0"]) >= int(current_a["idx_3"]) and p["idx_0"] not in used_as_result:
                     p_b = p
                     break
                     
@@ -908,13 +908,13 @@ def analyze(
             # Find C: >= p_b["idx_2"]
             p_c = None
             for p in completed_patterns:
-                if p["idx_0"] >= p_b["idx_2"]:
+                if int(p["idx_0"]) >= int(p_b["idx_2"]):
                     p_c = p
                     break
                     
             if p_c:
                 intermediate_path = []
-                for j in range(p_b["idx_2"], p_c["idx_0"]):
+                for j in range(int(p_b["idx_2"]), int(p_c["idx_0"])):
                     if labels[j] not in keep_tokens:
                         st = swing_types[j]
                         if st == "HIGH":
