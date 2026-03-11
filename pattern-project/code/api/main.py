@@ -44,12 +44,20 @@ class PatternPoint(BaseModel):
     type: str  # 'high' or 'low'
     cross_type: str
 
+def _round_ohlc(df: pd.DataFrame) -> pd.DataFrame:
+    """Round OHLC price columns to 1 decimal place for consistent analysis."""
+    for col in ('Open', 'High', 'Low', 'Close'):
+        if col in df.columns:
+            df[col] = df[col].round(1)
+    return df
+
+
 @app.get("/")
 def read_root():
     return FileResponse(os.path.join(static_path, "index.html"))
 
 @app.get("/api/stocks/{symbol}", response_model=List[StockDataPoint])
-def get_stock_data(symbol: str, years: Optional[int] = Query(None)):
+def get_stock_data(symbol: str, years: Optional[int] = Query(None), round_prices: bool = Query(True)):
     symbol = symbol.upper()
     try:
         service = NepalStockService()
@@ -58,6 +66,9 @@ def get_stock_data(symbol: str, years: Optional[int] = Query(None)):
         if years:
             cutoff = pd.Timestamp.now() - pd.DateOffset(years=years)
             df = df[df['Date'] >= cutoff]
+
+        if round_prices:
+            df = _round_ohlc(df)
             
         # Convert to standard format
         df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
@@ -77,7 +88,7 @@ def get_stock_data(symbol: str, years: Optional[int] = Query(None)):
         raise HTTPException(status_code=404, detail=str(e))
 
 @app.get("/api/stocks/{symbol}/patterns", response_model=List[PatternPoint])
-def get_stock_patterns(symbol: str, years: Optional[int] = Query(None)):
+def get_stock_patterns(symbol: str, years: Optional[int] = Query(None), threshold: float = Query(0.0), round_prices: bool = Query(True)):
     symbol = symbol.upper()
     try:
         service = NepalStockService()
@@ -86,8 +97,11 @@ def get_stock_patterns(symbol: str, years: Optional[int] = Query(None)):
         if years:
             cutoff = pd.Timestamp.now() - pd.DateOffset(years=years)
             df = df[df['Date'] >= cutoff]
+
+        if round_prices:
+            df = _round_ohlc(df)
             
-        df = calculate_ema_cross(df)
+        df = calculate_ema_cross(df, threshold=threshold)
         points = extract_zigzag_points(df)
         
         return [PatternPoint(
@@ -106,6 +120,8 @@ def get_ema_data(
     years: Optional[int] = Query(None),
     short: int = Query(9),
     long: int = Query(18),
+    threshold: float = Query(0.0),
+    round_prices: bool = Query(True)
 ):
     """Returns EMA short and long series for charting."""
     symbol = symbol.upper()
@@ -117,7 +133,9 @@ def get_ema_data(
             cutoff = pd.Timestamp.now() - pd.DateOffset(years=years)
             df = df[df['Date'] >= cutoff]
 
-        df = calculate_ema_cross(df, short_span=short, long_span=long)
+        if round_prices:
+            df = _round_ohlc(df)
+        df = calculate_ema_cross(df, short_span=short, long_span=long, threshold=threshold)
         df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
         
         # Handle potential NaNs in EMA calculations (e.g. at start of series)
@@ -126,22 +144,22 @@ def get_ema_data(
         return {
             "short_span": short,
             "long_span": long,
-            "ema_short": [{"time": r["Date"], "value": round(r["ema_short"], 2)} for _, r in df.iterrows()],
-            "ema_long":  [{"time": r["Date"], "value": round(r["ema_long"],  2)} for _, r in df.iterrows()],
+            "ema_short": [{"time": r["Date"], "value": round(r["ema_short"], 1)} for _, r in df.iterrows()],
+            "ema_long":  [{"time": r["Date"], "value": round(r["ema_long"],  1)} for _, r in df.iterrows()],
         }
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
 @app.get("/api/stocks/{symbol}/run")
-def run_pipeline(symbol: str, years: Optional[int] = Query(None)):
+def run_pipeline(symbol: str, years: Optional[int] = Query(None), threshold: float = Query(0.0)):
     """Triggers the full nepal_pipeline.py background analysis."""
     symbol = symbol.upper()
     project_root = Path(__file__).resolve().parent.parent.parent
     pipeline_script = project_root / "code/pipelines/nepal_pipeline.py"
     python_exe = sys.executable
 
-    cmd = [python_exe, str(pipeline_script), symbol]
+    cmd = [python_exe, str(pipeline_script), symbol, "--threshold", str(threshold)]
     if years:
         cmd += ["--years", str(years)]
 

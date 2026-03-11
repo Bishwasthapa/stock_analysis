@@ -32,6 +32,7 @@ def main() -> None:
     parser.add_argument("symbol", help="Stock symbol, e.g. NICA, HIDCLP, SRLI")
     parser.add_argument("--ema-short", type=int, default=9)
     parser.add_argument("--ema-long", type=int, default=18)
+    parser.add_argument("--threshold", type=float, default=0.0)
     parser.add_argument("--refresh", choices=["auto", "always", "never"], default="auto")
     parser.add_argument("--max-stale-days", type=int, default=0)
     parser.add_argument("--years", type=int, default=None,
@@ -50,6 +51,8 @@ def main() -> None:
             str(args.ema_short),
             "--ema-long",
             str(args.ema_long),
+            "--threshold",
+            str(args.threshold),
             "--refresh",
             args.refresh,
             "--max-stale-days",

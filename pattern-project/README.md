@@ -27,6 +27,16 @@ Generate dark-mode EMA crossover and Zigzag charts for local data.
 python code/algorithms/ema_viz.py NICA --years 2
 ```
 
+### 4. Web Dashboard (Interactive Chart Portal)
+Start the local API server, then open the browser at `http://localhost:8000`.
+```bash
+# From the project root
+nohup venv/bin/uvicorn code.api.main:app --host 0.0.0.0 --port 8000 >> /tmp/api.log 2>&1 &
+```
+> **Note:** The server is **not** persistent across reboots — run the command above each time to start it.  
+> To stop it: `pkill -f uvicorn`
+
+
 ## 📂 Key Folders
 - `data/nepal/`: Raw split-adjusted CSVs.
 - `results/nepal/<SYMBOL>/in_out/`:

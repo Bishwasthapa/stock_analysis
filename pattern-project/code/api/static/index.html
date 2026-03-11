@@ -70,7 +70,45 @@
             padding: 24px;
             gap: 24px;
             z-index: 100;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                        margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            flex-shrink: 0;
         }
+        body.sidebar-collapsed aside {
+            transform: translateX(-300px);
+            margin-right: -300px;
+        }
+        body.no-transition aside,
+        body.no-transition #sidebarTab {
+            transition: none !important;
+        }
+
+        /* Toggle tab */
+        #sidebarTab {
+            position: fixed;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 64px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: none;
+            border-radius: 0 10px 10px 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s;
+            color: var(--muted);
+            font-size: 0.65rem;
+        }
+        body:not(.sidebar-collapsed) #sidebarTab {
+            left: 300px;
+        }
+        #sidebarTab:hover { background: var(--border); color: var(--white); }
 
         .logo {
             display: flex;
@@ -427,6 +465,7 @@
 </head>
 <body>
 
+<button id="sidebarTab" onclick="toggleSidebar()" title="Toggle sidebar">☰</button>
 <aside>
     <div class="logo">
         <div class="logo-icon">🚀</div>
@@ -435,13 +474,13 @@
 
     <div class="field-group">
         <div class="field-label">Market Symbol</div>
-        <input type="text" id="symbolInput" placeholder="NICA, SCB, EHPL..." value="SCB">
+        <input type="text" id="symbolInput" placeholder="NICA, SCB, EHPL..." value="NEPSE">
     </div>
 
     <div class="field-group">
         <div class="field-label">History Context: <span id="yearsVal">5 Years</span></div>
         <div class="range-wrap">
-            <input type="range" id="yearsRange" min="1" max="15" value="5">
+            <input type="range" id="yearsRange" min="1" max="15" value="15">
             <div class="range-labels">
                 <span>1Y</span>
                 <span>5Y</span>
@@ -479,12 +518,24 @@
             </label>
         </div>
         <div class="setting-row">
+            <span style="font-size: 0.75rem; font-weight: 600;">Round Prices (1dp)</span>
+            <label class="switch">
+                <input type="checkbox" id="roundToggle" checked onchange="updateVisibility()">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div class="setting-row">
             <span style="font-size: 0.75rem; font-weight: 600;">Visual Theme</span>
         </div>
         <div class="palette-grid">
             <div class="palette-btn palette-neon active" onclick="setTheme('neon')" title="Neon"></div>
             <div class="palette-btn palette-midnight" onclick="setTheme('midnight')" title="Midnight"></div>
             <div class="palette-btn palette-forest" onclick="setTheme('forest')" title="Forest"></div>
+        </div>
+
+        <div class="field-label" style="margin-top: 16px; margin-bottom: 4px; font-size: 0.65rem;">Noise Filter (Threshold: <span id="threshVal">0.0</span>)</div>
+        <div class="range-wrap">
+            <input type="range" id="threshRange" min="0" max="1" step="0.05" value="0" oninput="updateThreshLabel(this.value)" onchange="applyThreshold()">
         </div>
     </div>
 
@@ -499,7 +550,7 @@
 <main>
     <div class="header">
         <div class="stock-info">
-            <h1 id="stockName">SCB</h1>
+            <h1 id="stockName">NEPSE</h1>
             <div class="price-row">
                 <span class="price-now" id="lastPrice">—</span>
                 <span class="price-change up" id="priceChange">+0.00%</span>
@@ -574,7 +625,7 @@
                 </div>
                 <!-- NEW Executive Summary Section -->
                 <div class="field-label" style="margin-top: 10px;">Executive Summary</div>
-                <div id="executiveSummary" style="font-size: 0.8rem; line-height: 1.5; color: var(--text); background: var(--glass); padding: 16px; border-radius: 12px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; border: 1px solid var(--border);">
+                <div id="executiveSummary" style="font-size: 0.85rem; line-height: 1.7; color: var(--text); background: var(--glass); padding: 16px; border-radius: 12px; overflow-y: auto; white-space: pre-wrap; border: 1px solid var(--border);">
                     Loading report text...
                 </div>
             </div>
@@ -602,10 +653,30 @@
         timeScale: { borderColor: 'rgba(255,255,255,0.1)' },
     });
 
+    function getThresh() {
+        return document.getElementById('threshRange').value || 0;
+    }
+
+    function getRound() {
+        const el = document.getElementById('roundToggle');
+        return el ? el.checked : true;
+    }
+
+    function updateThreshLabel(val) {
+        document.getElementById('threshVal').innerText = val;
+    }
+
+    async function applyThreshold() {
+        const sym = document.getElementById('symbolInput').value.toUpperCase();
+        const years = document.getElementById('yearsRange').value;
+        await loadStock(sym, years);
+    }
+
     const candleSeries = chart.addCandlestickSeries({
         upColor: '#00e676', downColor: '#ff5252',
         borderUpColor: '#00e676', borderDownColor: '#ff5252',
         wickUpColor: '#00e676', wickDownColor: '#ff5252',
+        priceFormat: { type: 'price', precision: 1, minMove: 0.1 },
     });
 
     const volumeSeries = chart.addHistogramSeries({
@@ -630,8 +701,9 @@
         document.getElementById('stockName').innerText = `${sym} (RUNNING...)`;
 
         try {
+            const thresh = getThresh();
             // Trigger backend analysis
-            const runRes = await fetch(`/api/stocks/${sym}/run${years ? '?years='+years : ''}`);
+            const runRes = await fetch(`/api/stocks/${sym}/run${years ? '?years='+years : '?threshold='+thresh}${years ? '&threshold='+thresh : ''}`);
             if (!runRes.ok) throw new Error("Pipeline failed");
 
             // Fetch results
@@ -647,7 +719,15 @@
 
     async function loadStock(sym, years) {
         document.getElementById('stockName').innerText = sym;
-        const yParam = (years && years != 15) ? `?years=${years}` : '';
+        const thresh = getThresh();
+        const roundParam = getRound() ? 'true' : 'false';
+        const yParam = (years && years != 15) ? `?years=${years}&threshold=${thresh}&round_prices=${roundParam}` : `?threshold=${thresh}&round_prices=${roundParam}`;
+
+        // Clear old markers immediately so they don't linger during load
+        candleSeries.setMarkers([]);
+        document.getElementById('bullCount').innerText = "—";
+        document.getElementById('bearCount').innerText = "—";
+        document.getElementById('trendBadge').style.display = 'none';
         
         // 1. Candlestick Data
         const res = await fetch(`/api/stocks/${sym}${yParam}`);
@@ -668,7 +748,7 @@
         const prev = ohlcv[ohlcv.length - 2];
         if (last && prev) {
             document.getElementById('lastPrice').innerText = `Rs. ${last.Close.toFixed(1)}`;
-            const chg = ((last.Close - prev.Close) / prev.Close * 100).toFixed(2);
+            const chg = ((last.Close - prev.Close) / prev.Close * 100).toFixed(1);
             const el = document.getElementById('priceChange');
             el.innerText = `${chg > 0 ? '+' : ''}${chg}%`;
             el.className = `price-change ${chg >= 0 ? 'up' : 'down'}`;
@@ -676,28 +756,32 @@
 
         // 2. Pattern Markers
         if (document.getElementById('markerToggle').checked) {
-            const pRes = await fetch(`/api/stocks/${sym}/patterns${yParam}`);
-            const patterns = await pRes.json();
-            
-            const markers = patterns.map(p => ({
-                time: p.date,
-                position: p.type === 'high' ? 'aboveBar' : 'belowBar',
-                color: p.cross_type === 'bull' ? '#00e676' : (p.cross_type === 'bear' ? '#ff5252' : '#ffa726'),
-                shape: p.type === 'high' ? 'arrowDown' : 'arrowUp',
-                text: p.cross_type.toUpperCase()
-            }));
-            candleSeries.setMarkers(markers);
+            try {
+                const pRes = await fetch(`/api/stocks/${sym}/patterns${yParam}`);
+                const patterns = await pRes.json();
+                
+                // Sort by date ascending (required by LightweightCharts)
+                patterns.sort((a, b) => a.date.localeCompare(b.date));
+                
+                // Markers on chart are disabled — counts and badge still shown below
+                candleSeries.setMarkers([]);
 
-            // Signal counts
-            document.getElementById('bullCount').innerText = patterns.filter(p => p.cross_type === 'bull').length;
-            document.getElementById('bearCount').innerText = patterns.filter(p => p.cross_type === 'bear').length;
+                // Signal counts
+                document.getElementById('bullCount').innerText = patterns.filter(p => p.cross_type === 'bull').length;
+                document.getElementById('bearCount').innerText = patterns.filter(p => p.cross_type === 'bear').length;
 
-            // Latest Trend Badge
-            if (patterns.length > 0) {
-                const lastP = patterns[patterns.length - 1];
-                const badge = document.getElementById('trendBadge');
-                badge.style.display = 'flex';
-                document.getElementById('trendText').innerText = `LATEST: ${lastP.cross_type.toUpperCase()} (${lastP.type.toUpperCase()})`;
+                // Latest Trend Badge
+                if (patterns.length > 0) {
+                    const lastP = patterns[patterns.length - 1];
+                    const badge = document.getElementById('trendBadge');
+                    badge.style.display = 'flex';
+                    document.getElementById('trendText').innerText = `LATEST: ${lastP.cross_type.toUpperCase()} (${lastP.type.toUpperCase()})`;
+                }
+            } catch (e) {
+                console.error(`[Markers] Failed to load markers for ${sym}:`, e);
+                candleSeries.setMarkers([]);
+                document.getElementById('bullCount').innerText = "ERR";
+                document.getElementById('bearCount').innerText = "ERR";
             }
         } else {
             candleSeries.setMarkers([]);
@@ -754,7 +838,8 @@
     }
 
     async function fetchStructure(sym, years) {
-        const yParam = (years && years != 15) ? `?years=${years}` : '';
+        const thresh = getThresh();
+        const yParam = (years && years != 15) ? `?years=${years}&threshold=${thresh}` : `?threshold=${thresh}`;
         const res = await fetch(`/api/stocks/${sym}/structure${yParam}`);
         const data = await res.json();
         
@@ -818,7 +903,8 @@
     }
 
     async function fetchEMA(sym, years) {
-        const yParam = (years && years != 15) ? `?years=${years}` : '';
+        const thresh = getThresh();
+        const yParam = (years && years != 15) ? `?years=${years}&threshold=${thresh}` : `?threshold=${thresh}`;
         const res = await fetch(`/api/stocks/${sym}/ema${yParam}`);
         const data = await res.json();
         
@@ -965,6 +1051,7 @@
         if (years == 15) years = "";
         
         localStorage.setItem('showMarkers', document.getElementById('markerToggle').checked);
+        localStorage.setItem('roundPrices', document.getElementById('roundToggle').checked);
         await loadStock(sym, years);
     }
 
@@ -972,10 +1059,23 @@
     window.addEventListener('load', () => {
         const savedTheme = localStorage.getItem('chartTheme') || 'neon';
         const savedMarkers = localStorage.getItem('showMarkers') !== 'false'; // default true
-        
+        const savedRound   = localStorage.getItem('roundPrices') !== 'false';  // default true
+        const savedSidebar = localStorage.getItem('sidebarOpen') === 'true';   // default collapsed
+
         setTheme(savedTheme);
         document.getElementById('markerToggle').checked = savedMarkers;
-        
+        document.getElementById('roundToggle').checked  = savedRound;
+
+        if (!savedSidebar) {
+            document.body.classList.add('no-transition');
+            document.body.classList.add('sidebar-collapsed');
+            // Wait one frame for layout to settle, then resize chart
+            requestAnimationFrame(() => {
+                chart.resize(container.clientWidth, container.clientHeight);
+                document.body.classList.remove('no-transition');
+            });
+        }
+
         // Initial load
         const sym = document.getElementById('symbolInput').value.toUpperCase();
         let years = document.getElementById('yearsRange').value;
@@ -983,9 +1083,24 @@
         loadStock(sym, years);
     });
 
+    function toggleSidebar() {
+        const collapsed = document.body.classList.toggle('sidebar-collapsed');
+        localStorage.setItem('sidebarOpen', !collapsed);
+        // Resize chart after transition completes
+        setTimeout(() => chart.resize(container.clientWidth, container.clientHeight), 320);
+    }
+
     // Handle resize
     window.addEventListener('resize', () => {
         chart.resize(container.clientWidth, container.clientHeight);
+    });
+
+    // ESC closes any open modal
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeScorecard();
+            closeVisualization();
+        }
     });
 </script>
 </body>

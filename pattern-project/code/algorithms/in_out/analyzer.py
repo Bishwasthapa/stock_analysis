@@ -714,144 +714,6 @@ def analyze(
 
     completed_patterns.sort(key=lambda r: r["idx_0"])
 
-    # Build the new hybrid chain based on user's specified logic.
-    # It prefers continuous chains (linking via roles 1,2,3) and falls back to the next available pattern.
-    completed_patterns.sort(key=lambda r: r["idx_0"])
-    
-    # Create a lookup map for efficient searching of pattern starts
-    starts_at = {p["idx_0"]: p for p in completed_patterns}
-    
-    hybrid_chain = []
-    visited_indices = set()
-    
-    master_list_idx = 0
-    while master_list_idx < len(completed_patterns):
-        p_current = completed_patterns[master_list_idx]
-        
-        if p_current["idx_0"] in visited_indices:
-            master_list_idx += 1
-            continue
-
-        # Start a new chain segment
-        hybrid_chain.append(p_current)
-        visited_indices.add(p_current["idx_0"])
-        
-        # Inner loop to follow the continuous chain
-        while True:
-            p_next = None
-            
-            # Prioritized search for the next link
-            for role_to_check in [1, 2, 3]:
-                next_start_index = p_current[f"idx_{role_to_check}"]
-                if next_start_index in starts_at:
-                    potential_next = starts_at[next_start_index]
-                    if potential_next["idx_0"] not in visited_indices:
-                        p_next = potential_next
-                        break # Found a link
-            
-            # If a link was found, add it and continue the inner loop
-            if p_next:
-                hybrid_chain.append(p_next)
-                visited_indices.add(p_next["idx_0"])
-                p_current = p_next
-            else:
-                # No continuous link found, break inner loop to start new segment
-                break
-        
-        master_list_idx += 1
-
-
-    # Re-calculate transition counters and examples based on the new hybrid_chain
-    pat_counter: Dict[Context, Counter] = defaultdict(Counter)
-    pat_examples: List[dict] = []
-    for i in range(2, len(hybrid_chain)):
-        a = hybrid_chain[i - 2]
-        b = hybrid_chain[i - 1]
-        c = hybrid_chain[i]
-        ctx = (a["pattern_token"], b["pattern_token"])
-        pat_counter[ctx][c["pattern_token"]] += 1
-        pat_examples.append(
-            {
-                "prev_2_a": a["pattern_token"],
-                "prev_2_b": b["pattern_token"],
-                "next": c["pattern_token"],
-                "a_date_0": a["date_0"],
-                "a_date_3": a["date_3"],
-                "b_date_0": b["date_0"],
-                "b_date_3": b["date_3"],
-                "c_date_0": c["date_0"],
-                "c_date_3": c["date_3"],
-                "a_date_0_label": a["date_0_label"],
-                "a_date_3_label": a["date_3_label"],
-                "b_date_0_label": b["date_0_label"],
-                "b_date_3_label": b["date_3_label"],
-                "c_date_0_label": c["date_0_label"],
-                "c_date_3_label": c["date_3_label"],
-            }
-        )
-
-    pat_rows = []
-    pat_grouped = defaultdict(list)
-    for (a, b), cnts in sorted(pat_counter.items()):
-        total_ctx = sum(cnts.values())
-        for nxt, cnt in sorted(cnts.items(), key=lambda x: (-x[1], x[0])):
-            row = {
-                "prev_2_a": a,
-                "prev_2_b": b,
-                "next": nxt,
-                "count": cnt,
-                "total_context_count": total_ctx,
-                "prob_next_pattern_given_prev2": f"{(cnt / total_ctx):.4f}",
-            }
-            pat_rows.append(row)
-            pat_grouped[(a, b)].append(row)
-
-    pat_rows.sort(
-        key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["next"])
-    )
-    write_csv(
-        csv_dir / "movement_pattern_transitions.csv",
-        [
-            "prev_2_a",
-            "prev_2_b",
-            "next",
-            "count",
-            "total_context_count",
-            "prob_next_pattern_given_prev2",
-        ],
-        pat_rows,
-    )
-
-    # The `in_out_up_down_9_18.txt` file was previously generated here,
-    # but it was removed in favor of `transition_pattern_path_9_18.txt` which provides
-    # the exact same transition data but also tracks intermediate invalid swings.
-
-    # Chain view: explicit sliding sequence (A+B->C then B+C->D)
-    chain_txt = txt_dir / "Intersecting_path_9_18.txt"
-    with chain_txt.open("w", encoding="utf-8") as f:
-        f.write("Pattern chain (immediate sequence, sliding window)\n")
-        f.write("Each line uses consecutive complete patterns.\n\n")
-        
-        for i, p in enumerate(hybrid_chain):
-            f.write(f"{i+1}. {p['pattern_token']} @ {p['date_0_label']}\n")
-                    
-        f.write("\nTransitions (Strict Patterns Only):\n")
-        for i in range(2, len(hybrid_chain)):
-            a = hybrid_chain[i-2]
-            b = hybrid_chain[i-1]
-            c = hybrid_chain[i]
-            
-            # Base probability for just reaching pattern C
-            total_ctx = sum(pat_counter.get((a['pattern_token'], b['pattern_token']), {}).values())
-            hit_count = pat_counter.get((a['pattern_token'], b['pattern_token']), {}).get(c['pattern_token'], 0)
-            pct = (hit_count / total_ctx * 100.0) if total_ctx else 0.0
-                
-            f.write(
-                f"{a['pattern_token']} + {b['pattern_token']} -> {c['pattern_token']} | "
-                f"count={hit_count}/{total_ctx} ({pct:.2f}%) | "
-                f"dates: {a['date_0_label']} + {b['date_0_label']} -> {c['date_0_label']}\n"
-            )
-
     # --- DOUBLE COMBINATION STRATEGY ENGINE: (A + B -> Path -> Target) ---
     all_patterns = find_all_valid_patterns(rows)
     # input1, input2: valid patterns, non-intersecting
@@ -900,7 +762,7 @@ def analyze(
                     st = swing_types[k]
                     path_swings.append(f"SWING_{st.upper()}")
             
-            path_label = " -> ".join(path_swings) if path_swings else "CHAINED"
+            path_label = " -> ".join(path_swings) if path_swings else ""
             
             if p_c:
                 # Naming for target relative to B
@@ -925,8 +787,10 @@ def analyze(
     iter_counter: Dict[Context, Counter] = defaultdict(Counter)
     for trans in iterative_transitions:
         ctx = (trans["a"]["pattern_token"], trans["b"]["pattern_token"])
-        # Format: [Path] -> Target
-        combined_result = f"[{trans['path']}] -> {trans['target']}"
+        if trans['path']:
+            combined_result = f"[{trans['path']}] -> {trans['target']}"
+        else:
+            combined_result = f"{trans['target']}"
         iter_counter[ctx][combined_result] += 1
 
     iter_txt = txt_dir / "Final_strategy_9_18.txt"
@@ -938,6 +802,19 @@ def analyze(
         f.write("  - Target: The next structural anchor pattern.\n")
         f.write("  - Iteration: Next A = current B.\n\n")
         
+        # ── Chronological sequences first ──
+        f.write("Chronological Strategy Sequences:\n")
+        for i, trans in enumerate(iterative_transitions):
+            a, b, path, target = trans["a"], trans["b"], trans["path"], trans["target"]
+            t_date = trans["p_c_obj"]["date_0_label"] if trans["p_c_obj"] else "N/A"
+            if path:
+                f.write(f"{i+1}. {a['pattern_token']} ({a['date_0_label']}) + {b['pattern_token']} ({b['date_0_label']}) -> [{path}] -> {target} ({t_date})\n")
+            else:
+                f.write(f"{i+1}. {a['pattern_token']} ({a['date_0_label']}) + {b['pattern_token']} ({b['date_0_label']}) -> {target} ({t_date})\n")
+
+        f.write("\n")
+
+        # ── Probability tables ──
         grouped_iter = defaultdict(list)
         for (a_token, b_token), cnts in sorted(iter_counter.items()):
             # Filter out END_OF_DATA from the rules summary
@@ -961,11 +838,7 @@ def analyze(
             for row in grouped_iter[key]:
                 f.write(f"  -> {row['seq']} | count={row['count']}/{row['total']} ({row['pct']:.2f}%)\n")
             f.write("\n")
-            
-        f.write("Chronological Strategy Sequences:\n")
-        for i, trans in enumerate(iterative_transitions):
-            a, b, path, target = trans["a"], trans["b"], trans["path"], trans["target"]
-            f.write(f"{i+1}. {a['pattern_token']} + {b['pattern_token']} -> [{path}] -> {target}\n")
+
 
 
     stable_count = sum(1 for r in context_rows if r["stability"] == "STABLE")
@@ -1083,8 +956,7 @@ def main() -> None:
     print(f"  - {csv_dir / 'movement_clean_transitions.csv'}")
     print(f"  - {csv_dir / 'forecast_next_signal.csv'}")
     print(f"  - {csv_dir / 'forecast_confirmed_completions.csv'}")
-    print(f"  - {csv_dir / 'movement_pattern_transitions.csv'}")
-    print(f"  - {txt_dir / 'Intersecting_path_9_18.txt'}")
+
     print(f"  - {txt_dir / 'Final_strategy_9_18.txt'}")
 
 

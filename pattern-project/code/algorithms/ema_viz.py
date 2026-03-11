@@ -43,11 +43,12 @@ def load_stock_data(
     return service.load_data(symbol, refresh_mode=refresh_mode)
 
 
-def calculate_ema_cross(df: pd.DataFrame, short_span: int = 9, long_span: int = 18) -> pd.DataFrame:
+def calculate_ema_cross(df: pd.DataFrame, short_span: int = 9, long_span: int = 18, threshold: float = 0.0) -> pd.DataFrame:
     """
     Calculate EMA crossovers and add columns:
     - ema_short, ema_long: the two moving averages
     - ema_cross: +1 (bullish), -1 (bearish), 0 (none)
+    - threshold can be used to filter noise; cross only triggers if diff > threshold
     """
     df = df.copy()
     
@@ -56,11 +57,37 @@ def calculate_ema_cross(df: pd.DataFrame, short_span: int = 9, long_span: int = 
     df['ema_long']  = df['Close'].ewm(span=long_span,  adjust=False).mean()
     df['ema_diff']  = df['ema_short'] - df['ema_long']
     
-    # Detect crossovers
+    # Detect crossovers using hysteresis/threshold
     df['ema_cross'] = 0
-    df.loc[(df['ema_diff'] > 0) & (df['ema_diff'].shift(1) <= 0), 'ema_cross'] = 1
-    df.loc[(df['ema_diff'] < 0) & (df['ema_diff'].shift(1) >= 0), 'ema_cross'] = -1
+    df['ema_diff'] = df['ema_short'] - df['ema_long']
     
+    if threshold == 0.0:
+        df.loc[(df['ema_short'] > df['ema_long']) & (df['ema_short'].shift(1) <= df['ema_long'].shift(1)), 'ema_cross'] = 1
+        df.loc[(df['ema_short'] < df['ema_long']) & (df['ema_short'].shift(1) >= df['ema_long'].shift(1)), 'ema_cross'] = -1
+        return df
+
+    # We use a state-based approach to handle the threshold correctly
+    # Finding points where bull/bear is confirmed
+    active_bull = df['ema_diff'] > threshold
+    active_bear = df['ema_diff'] < -threshold
+    
+    # 1. Capture signs (-1, 0, 1) based on threshold
+    signs = np.zeros(len(df))
+    signs[df['ema_diff'] > threshold] = 1
+    signs[df['ema_diff'] < -threshold] = -1
+    
+    # 2. Fill zeros with previous non-zero state (preserving the trend until it breaks threshold)
+    series_signs = pd.Series(signs, index=df.index)
+    filled_signs = series_signs.replace(0, np.nan).ffill().fillna(0)
+    
+    # 3. Detect changes in the filled state
+    diff_signs = filled_signs.diff()
+    
+    # If it goes from 0 to 1, or -1 to 1 => Bullish Cross (+1)
+    df.loc[((filled_signs == 1) & (filled_signs.shift(1) != 1)).to_numpy(), 'ema_cross'] = 1
+    # If it goes from 0 to -1, or 1 to -1 => Bearish Cross (-1)
+    df.loc[((filled_signs == -1) & (filled_signs.shift(1) != -1)).to_numpy(), 'ema_cross'] = -1
+
     return df
 
 
@@ -363,6 +390,7 @@ if __name__ == '__main__':
     parser.add_argument("symbol", help="Stock symbol, e.g. NICA, HIDCLP")
     parser.add_argument("--ema-short", type=int, default=9)
     parser.add_argument("--ema-long", type=int, default=18)
+    parser.add_argument("--threshold", type=float, default=0.0, help="Minimum EMA diff to trigger crossover (filters noise)")
     parser.add_argument(
         "--refresh",
         choices=["auto", "always", "never"],
@@ -391,8 +419,8 @@ if __name__ == '__main__':
         )
         print(f"  Loaded {len(df)} rows")
         
-        print(f"Calculating {short_span}/{long_span} EMA crossovers...")
-        df = calculate_ema_cross(df, short_span, long_span)
+        print(f"Calculating {short_span}/{long_span} EMA crossovers (threshold: {args.threshold})...")
+        df = calculate_ema_cross(df, short_span, long_span, threshold=args.threshold)
         
         # Compute once, then reuse everywhere.
         points = extract_zigzag_points(df)
