@@ -244,30 +244,75 @@ def get_strategy_txt(symbol: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+import math
+
+def _wilson_score(count: int, total: int, z: float = 1.96) -> float:
+    """Wilson Score lower confidence bound (95%). Penalises small samples.
+    Returns a value in [0, 1] — higher means more trustworthy."""
+    if total == 0:
+        return 0.0
+    p_hat = count / total
+    denom = 1 + z * z / total
+    centre = p_hat + z * z / (2 * total)
+    spread = z * math.sqrt(p_hat * (1 - p_hat) / total + z * z / (4 * total * total))
+    return (centre - spread) / denom
+
+
 def parse_strategy_text(content: str) -> list[dict]:
-    """Parses the 'A + B -> Path -> Target' rules from Final_strategy.txt."""
+    """Parses the 'A + B -> Path -> Target' rules from Final_strategy.txt.
+    Each combo is enriched with:
+      - wilson_score  : lower confidence bound (95%) — used for ranking
+      - adjusted_prob : Laplace-smoothed probability for honest display
+    """
     import re
     combos = []
     
     # regex to find "IN_DOWN + IN_UP:" style headers
     sections = re.split(r'\n([A-Z_]+ \+ [A-Z_]+:)\n', content)
     
-    # Sections[0] is preamble, [1] is header, [2] is content, [3] is header...
     for i in range(1, len(sections), 2):
         header = sections[i].strip(':')
         body   = sections[i+1]
         
-        # Regex to find individual outcomes: "-> [CHAINED] -> IN_UP | count=1/3 (33.33%)"
-        outcomes = re.findall(r'-> \[(.*?)\] -> ([A-Z_]+) \| count=(\d+/\d+) \((.*?)\)', body)
-        
-        for path, target, ratio, prob in outcomes:
+        # Match outcomes WITH a path: "-> [PATH] -> TARGET | count=N/T (X%)"
+        outcomes_with_path = re.findall(
+            r'-\> \[(.*?)\] -\> ([A-Z_]+) \| count=(\d+)/(\d+) \(.*?\)', body
+        )
+        # Match DIRECT outcomes (no path): "-> TARGET | count=N/T (X%)"
+        outcomes_direct = re.findall(
+            r'-\> ([A-Z_]+) \| count=(\d+)/(\d+) \(.*?\)', body
+        )
+
+        for path, target, cnt_s, tot_s in outcomes_with_path:
+            cnt, tot = int(cnt_s), int(tot_s)
+            raw_pct   = (cnt / tot * 100) if tot else 0.0
+            adj_pct   = ((cnt + 1) / (tot + 2) * 100)  # Laplace smoothing
+            ws        = _wilson_score(cnt, tot)
             combos.append({
-                "pairing": header,
-                "path": path,
-                "target": target,
-                "ratio": ratio,
-                "probability": prob,
-                "is_bull": "UP" in target
+                "pairing"           : header,
+                "path"              : path,
+                "target"            : target,
+                "ratio"             : f"{cnt}/{tot}",
+                "probability"       : f"{raw_pct:.2f}%",
+                "adjusted_probability": f"{adj_pct:.1f}%",
+                "wilson_score"      : round(ws * 100, 1),
+                "is_bull"           : "UP" in target,
+            })
+
+        for target, cnt_s, tot_s in outcomes_direct:
+            cnt, tot = int(cnt_s), int(tot_s)
+            raw_pct   = (cnt / tot * 100) if tot else 0.0
+            adj_pct   = ((cnt + 1) / (tot + 2) * 100)
+            ws        = _wilson_score(cnt, tot)
+            combos.append({
+                "pairing"           : header,
+                "path"              : "",
+                "target"            : target,
+                "ratio"             : f"{cnt}/{tot}",
+                "probability"       : f"{raw_pct:.2f}%",
+                "adjusted_probability": f"{adj_pct:.1f}%",
+                "wilson_score"      : round(ws * 100, 1),
+                "is_bull"           : "UP" in target,
             })
             
     return combos
@@ -275,7 +320,7 @@ def parse_strategy_text(content: str) -> list[dict]:
 
 @app.get("/api/stocks/{symbol}/strategy_combos")
 def get_strategy_combos(symbol: str):
-    """Returns the parsed Double Combination results from Final_strategy.txt."""
+    """Returns parsed Double Combination results, sorted by Wilson Score (most reliable first)."""
     symbol = symbol.upper()
     project_root = Path(__file__).resolve().parent.parent.parent
     txt_path = project_root / f"results/nepal/{symbol}/in_out/txt/Final_strategy_9_18.txt"
@@ -286,8 +331,10 @@ def get_strategy_combos(symbol: str):
     try:
         with open(txt_path, "r") as f:
             content = f.read()
-            combos = parse_strategy_text(content)
-            return combos
+        combos = parse_strategy_text(content)
+        # Sort: highest Wilson Score first (most statistically reliable)
+        combos.sort(key=lambda x: x["wilson_score"], reverse=True)
+        return combos
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

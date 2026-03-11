@@ -44,5 +44,16 @@ nohup venv/bin/uvicorn code.api.main:app --host 0.0.0.0 --port 8000 >> /tmp/api.
   - `csv/`: Transition matrices, strategy recommendations, and forecasts.
   - `txt/`: Human-readable sequence chains (`Final_strategy_9_18.txt`).
 
+## 📐 Statistical Methods
+
+The **Strategy Scorecard** uses two techniques to surface reliable patterns over lucky-but-rare ones:
+
+| Method | Purpose |
+|---|---|
+| **Wilson Score (95% CI)** | Ranks combos by their *lower confidence bound* — penalises 1/1=100% while rewarding 5/7=71%. Used as the `TRUST` score. |
+| **Laplace Smoothing** | Adjusts raw probability with a small prior `(count+1)/(total+2)` to avoid 100% from single observations. Shown as `PROB`. |
+
+Combos in the scorecard are sorted by **Wilson Score descending** — the most statistically reliable patterns appear first.
+
 ---
 *For technical details on the pattern detection logic, see [ALGORITHM.md](file:///mnt/personal/stock/own_for_analysis/pattern-project/ALGORITHM.md).*

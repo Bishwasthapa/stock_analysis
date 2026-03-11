@@ -979,18 +979,25 @@
                 const div = document.createElement('div');
                 div.className = `rec-item ${c.is_bull ? 'buy' : 'sell'}`;
                 
+                const displayProb = c.adjusted_probability || c.probability;
+                const ws = c.wilson_score ?? null;
+                const wsColor = ws === null ? 'var(--border)' : ws >= 40 ? 'var(--green)' : ws >= 20 ? 'var(--orange)' : 'var(--red)';
+
                 let content = `<h4>Combo: ${c.pairing}</h4>`;
-                content += `<p>Path: <strong>[${c.path}]</strong> brings valid Target: <strong>${c.target}</strong>.</p>`;
+                content += `<p>Path: <strong>[${c.path || 'DIRECT'}]</strong> → Target: <strong>${c.target}</strong>.</p>`;
                 content += `<div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">`;
-                content += `<span class="tag ${c.is_bull ? 'tag-bull' : 'tag-bear'}">PROBABILITY: ${c.probability}</span>`;
+                content += `<span class="tag ${c.is_bull ? 'tag-bull' : 'tag-bear'}">PROB: ${displayProb}</span>`;
                 content += `<span class="tag" style="background:var(--border)">MATCHES: ${c.ratio}</span>`;
+                if (ws !== null) {
+                    content += `<span class="tag" style="background:${wsColor}20; border:1px solid ${wsColor}; color:${wsColor}">TRUST: ${ws}%</span>`;
+                }
                 content += `</div>`;
                 
                 div.innerHTML = content;
                 list.appendChild(div);
 
-                // Add to average (strip % and parse)
-                totalProb += parseFloat(c.probability) || 0;
+                // Use Wilson Score for aggregate reliability (more honest than raw %)
+                totalProb += (ws !== null ? ws : parseFloat(c.probability)) || 0;
             });
 
             // Update stats
