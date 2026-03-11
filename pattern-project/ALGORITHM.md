@@ -65,6 +65,17 @@ This is the main market-footprint algorithm:
 Main output:
 - `results/nepal/<SYMBOL>/in_out/txt/transition_pattern_chain_9_18.txt`
 
-Support output:
-- `results/nepal/<SYMBOL>/in_out/csv/movement_detailed_paths.csv`
-  (same entries, but includes intermediate invalid swings)
+## 5) Final Strategy Output (Iteration Algorithm)
+
+Source: `code/algorithms/in_out/analyzer.py`
+
+This algorithm predicts an outcome C based on an input sequence A + B, tracking chronological occurrences strictly across specific anchor points:
+
+1. **Pattern A:** Begins at any valid pattern.
+2. **Pattern B:** The next valid pattern starting at or after **Pattern A's point 3**.
+3. **Pattern C (Result):** The next valid pattern starting at or after **Pattern B's point 2**.
+4. **Intermediate Swings:** Between Pattern B's point 2 and Pattern C's start, any invalid High/Low points are tracked as `INVALID_UP` and `INVALID_DOWN`, and prefixed to the result C (e.g. `INVALID_UP -> INVALID_DOWN -> OUT_DOWN`).
+5. **Next Iteration:** Pattern B becomes the new Pattern A for the next block. Pattern C (the result) is ignored when locating the subsequent inputs.
+
+Main output:
+- `results/nepal/<SYMBOL>/in_out/txt/strategy_final_pattern_9_18.txt`
