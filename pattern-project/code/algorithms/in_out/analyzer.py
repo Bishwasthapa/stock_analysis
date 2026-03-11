@@ -43,7 +43,7 @@ from typing import Dict, Iterable, List, Sequence, Tuple
 Context = Tuple[str, str]
 
 
-def read_rows(input_csv: Path) -> List[dict]:
+def read_rows(input_csv: Path, date_cutoff: Optional[str] = None) -> List[dict]:
     with input_csv.open("r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
@@ -54,6 +54,12 @@ def read_rows(input_csv: Path) -> List[dict]:
             f"`point_label` column not found in {input_csv}. "
             "Run pattern_detector_v2.py first."
         )
+    if date_cutoff and "date" in rows[0]:
+        from datetime import datetime as _dt
+        cutoff = _dt.strptime(date_cutoff, "%Y-%m-%d")
+        rows = [r for r in rows if r.get("date", "") and _dt.strptime(r["date"][:10], "%Y-%m-%d") >= cutoff]
+        if not rows:
+            raise ValueError(f"No rows remaining after filtering to {date_cutoff}+")
     return rows
 
 
@@ -165,11 +171,6 @@ def analyze(
                 "percent": f"{(count / total_tokens * 100):.2f}",
             }
         )
-    write_csv(
-        csv_dir / "stats_token_performance.csv",
-        ["label", "count", "percent"],
-        token_rows,
-    )
 
     # 2) Full 2->1 table and context summary
     full_counter = build_context_counter(tokens)
@@ -457,18 +458,6 @@ def analyze(
     clean_swing_rows.sort(
         key=lambda r: (r["prev_2_a"], r["prev_2_b"], -int(r["count"]), r["path_result"])
     )
-    write_csv(
-        csv_dir / "movement_detailed_paths.csv",
-        [
-            "prev_2_a",
-            "prev_2_b",
-            "path_result",
-            "count",
-            "total_context_count",
-            "prob_path_given_prev2",
-        ],
-        clean_swing_rows,
-    )
 
     # The `transition_pattern_path_9_18.txt` text format was removed to focus on strategy and chain files
 
@@ -565,25 +554,6 @@ def analyze(
             "prob_next_given_prev2_confirmed",
         ],
         confirmed_rows,
-    )
-    write_csv(
-        csv_dir / "forecast_completion_examples.csv",
-        [
-            "prev_2_a",
-            "prev_2_b",
-            "next",
-            "date_prev_2_a",
-            "date_prev_2_b",
-            "date_next",
-            "date_completion",
-            "date_prev_2_a_label",
-            "date_prev_2_b_label",
-            "date_next_label",
-            "date_completion_label",
-            "next_role",
-            "completion_role",
-        ],
-        confirmed_examples,
     )
 
     # text output trimmed (no transition_clean_prev2_confirmed.txt)
@@ -743,26 +713,6 @@ def analyze(
         )
 
     completed_patterns.sort(key=lambda r: r["idx_0"])
-    write_csv(
-        csv_dir / "movement_history_log.csv",
-        [
-            "pattern_token",
-            "trend_type",
-            "idx_0",
-            "idx_1",
-            "idx_2",
-            "idx_3",
-            "date_0",
-            "date_1",
-            "date_2",
-            "date_3",
-            "date_0_label",
-            "date_1_label",
-            "date_2_label",
-            "date_3_label",
-        ],
-        completed_patterns,
-    )
 
     # Build the new hybrid chain based on user's specified logic.
     # It prefers continuous chains (linking via roles 1,2,3) and falls back to the next available pattern.
@@ -870,27 +820,6 @@ def analyze(
             "prob_next_pattern_given_prev2",
         ],
         pat_rows,
-    )
-    write_csv(
-        csv_dir / "movement_transition_examples.csv",
-        [
-            "prev_2_a",
-            "prev_2_b",
-            "next",
-            "a_date_0",
-            "a_date_3",
-            "b_date_0",
-            "b_date_3",
-            "c_date_0",
-            "c_date_3",
-            "a_date_0_label",
-            "a_date_3_label",
-            "b_date_0_label",
-            "b_date_3_label",
-            "c_date_0_label",
-            "c_date_3_label",
-        ],
-        pat_examples,
     )
 
     # The `in_out_up_down_9_18.txt` file was previously generated here,
@@ -1058,6 +987,12 @@ def main() -> None:
             "(default: 4.0)"
         ),
     )
+    parser.add_argument(
+        "--years",
+        type=int,
+        default=None,
+        help="Limit analysis to last N years of data (e.g. 5). Default: all data.",
+    )
     args = parser.parse_args()
 
     symbol = args.symbol.upper()
@@ -1073,7 +1008,13 @@ def main() -> None:
     csv_dir.mkdir(parents=True, exist_ok=True)
     txt_dir.mkdir(parents=True, exist_ok=True)
 
-    rows = read_rows(input_csv)
+    from datetime import datetime as _dt, timedelta as _td
+    _cutoff = None
+    if args.years:
+        _cutoff = (_dt.today() - _td(days=args.years * 365)).strftime("%Y-%m-%d")
+        print(f"  Filtering analysis to last {args.years} years (from {_cutoff})")
+
+    rows = read_rows(input_csv, date_cutoff=_cutoff)
     summary = analyze(
         rows=rows,
         out_dir=output_dir,
@@ -1098,21 +1039,16 @@ def main() -> None:
         f"recent start idx {summary['recent_start_index']} ({summary['recent_start_date']})"
     )
     print("\nGenerated files:")
-    print(f"  - {csv_dir / 'stats_token_performance.csv'}")
     print(f"  - {csv_dir / 'stats_raw_transition_matrix.csv'}")
     print(f"  - {csv_dir / 'stats_context_summary.csv'}")
     print(f"  - {csv_dir / 'strategy_pattern_reliability.csv'}")
     print(f"  - {csv_dir / 'strategy_top_setups.csv'}")
     print(f"  - {csv_dir / 'strategy_recommendations.csv'}")
     print(f"  - {csv_dir / 'movement_clean_transitions.csv'}")
-    print(f"  - {csv_dir / 'movement_detailed_paths.csv'}")
     print(f"  - {csv_dir / 'forecast_next_signal.csv'}")
     print(f"  - {csv_dir / 'forecast_confirmed_completions.csv'}")
-    print(f"  - {csv_dir / 'forecast_completion_examples.csv'}")
-    print(f"  - {csv_dir / 'movement_history_log.csv'}")
     print(f"  - {csv_dir / 'movement_pattern_transitions.csv'}")
     print(f"  - {txt_dir / 'transition_pattern_chain_9_18.txt'}")
-    print(f"  - {csv_dir / 'movement_transition_examples.csv'}")
     print(f"  - {txt_dir / 'strategy_final_pattern_9_18.txt'}")
 
 

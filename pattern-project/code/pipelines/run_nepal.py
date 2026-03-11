@@ -31,6 +31,8 @@ def main() -> None:
     parser.add_argument("--ema-long", type=int, default=18)
     parser.add_argument("--refresh", choices=["auto", "always", "never"], default="auto")
     parser.add_argument("--max-stale-days", type=int, default=7)
+    parser.add_argument("--years", type=int, default=None,
+                        help="Limit analysis to last N years of data (e.g. 5). Default: all data.")
     args = parser.parse_args()
 
     symbol = args.symbol.upper()
@@ -51,8 +53,13 @@ def main() -> None:
             str(args.max_stale_days),
         ]
     )
-    run_cmd([py, "code/algorithms/in_out/detector.py", symbol])
-    run_cmd([py, "code/algorithms/in_out/analyzer.py", symbol])
+    detector_cmd = [py, "code/algorithms/in_out/detector.py", symbol]
+    analyzer_cmd = [py, "code/algorithms/in_out/analyzer.py", symbol]
+    if args.years is not None:
+        detector_cmd += ["--years", str(args.years)]
+        analyzer_cmd += ["--years", str(args.years)]
+    run_cmd(detector_cmd)
+    run_cmd(analyzer_cmd)
     print(f"\n✓ Pattern pipeline complete for {symbol}")
     print(f"  Results: results/nepal/{symbol}/in_out/")
 

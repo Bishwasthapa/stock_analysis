@@ -477,35 +477,41 @@ def plot_ema_chart(df: pd.DataFrame, symbol: str, short_span: int = 9, long_span
     """
     Plot the price chart with EMA lines and crossover markers.
     """
+    plt.style.use('dark_background')
     fig, ax = plt.subplots(figsize=(24, 10))
-    
+    fig.patch.set_facecolor('#0d1117')
+    ax.set_facecolor('#0d1117')
+
     # Plot price and EMAs
-    ax.plot(df['Date'], df['Close'], label='Close Price', color='black', linewidth=2.5, alpha=0.7)
-    ax.plot(df['Date'], df['ema_short'], label=f'{short_span}-EMA', color='blue', linewidth=2.5, alpha=0.8)
-    ax.plot(df['Date'], df['ema_long'],  label=f'{long_span}-EMA', color='red', linewidth=2.5, alpha=0.8)
-    
+    ax.plot(df['Date'], df['Close'], label='Close Price', color='#c9d1d9', linewidth=2, alpha=0.85)
+    ax.plot(df['Date'], df['ema_short'], label=f'{short_span}-EMA', color='#29b6f6', linewidth=2, alpha=0.9)
+    ax.plot(df['Date'], df['ema_long'],  label=f'{long_span}-EMA',  color='#ffa726', linewidth=2, alpha=0.9)
+
     # Mark bullish crosses
     bull_mask = df['ema_cross'] == 1
-    ax.scatter(df[bull_mask]['Date'], df[bull_mask]['Close'], 
-               marker='^', color='green', s=150, label='Bullish Cross', zorder=5)
-    
+    ax.scatter(df[bull_mask]['Date'], df[bull_mask]['Close'],
+               marker='^', color='#00e676', s=150, label='Bullish Cross', zorder=5)
+
     # Mark bearish crosses
     bear_mask = df['ema_cross'] == -1
-    ax.scatter(df[bear_mask]['Date'], df[bear_mask]['Close'], 
-               marker='v', color='magenta', s=150, label='Bearish Cross', zorder=5)
-    
-    ax.set_xlabel('Date', fontsize=14)
-    ax.set_ylabel('Price', fontsize=14)
-    ax.set_title(f'{symbol} - EMA Crossover Analysis ({short_span}/{long_span})', fontsize=16, fontweight='bold')
+    ax.scatter(df[bear_mask]['Date'], df[bear_mask]['Close'],
+               marker='v', color='#ef5350', s=150, label='Bearish Cross', zorder=5)
+
+    ax.set_xlabel('Date', fontsize=14, color='#c9d1d9')
+    ax.set_ylabel('Price', fontsize=14, color='#c9d1d9')
+    ax.set_title(f'{symbol} - EMA Crossover Analysis ({short_span}/{long_span})',
+                 fontsize=16, fontweight='bold', color='#f0f6fc')
     ax.legend(loc='best', fontsize=12)
-    ax.grid(True, alpha=0.3)
-    
-    # Show readable month labels (e.g., Jan 2026)
+    ax.grid(True, alpha=0.12, linestyle='--', color='#30363d')
+    ax.tick_params(colors='#8b949e')
+    for spine in ax.spines.values():
+        spine.set_edgecolor('#30363d')
+
     ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
     fig.autofmt_xdate(rotation=45, ha='right')
     plt.tight_layout()
-    
+
     return fig
 
 
@@ -518,51 +524,48 @@ def plot_highs_lows_after_cross(
 ) -> None:
     """
     Plot a simplified chart showing significant highs and lows tied to EMA crosses.
-    This creates a zigzag pattern that ignores noise and focuses on meaningful price action.
     """
+    plt.style.use('dark_background')
     fig, ax = plt.subplots(figsize=(24, 10))
-    
-    # Use precomputed points when provided so chart and CSV use identical logic/output.
+    fig.patch.set_facecolor('#0d1117')
+    ax.set_facecolor('#0d1117')
+
     if points is None:
         points = extract_zigzag_points(df)
-    
+
     if len(points) == 0:
         print("  No zigzag points found")
         return fig
-    
-    # Sort by date to ensure proper connection
+
     points_sorted = sorted(points, key=lambda p: p['index'])
-    
-    # Extract data for plotting
     dates = [p['date'] for p in points_sorted]
     prices = [p['price'] for p in points_sorted]
-    
+
     # Draw the zigzag line
-    ax.plot(dates, prices, label='Price Action Zigzag', color='navy', linewidth=3, marker='o', markersize=10, alpha=0.8)
-    
-    # Color code points by the cross type that preceded them
+    ax.plot(dates, prices, label='Price Action Zigzag', color='#8b949e',
+            linewidth=2, marker='o', markersize=8, alpha=0.7)
+
+    # Color code points: bull cross = neon green, bear cross = bright red
     for point in points_sorted:
-        if point['cross_type'] == 'bull':
-            color = 'green'
-            label_marker = 'H'
-        else:
-            color = 'red'
-            label_marker = 'L'
-        
-        ax.scatter(point['date'], point['price'], color=color, s=250, zorder=5, alpha=0.85, edgecolors='black', linewidth=1.5)
-    
-    ax.set_xlabel('Date', fontsize=14)
-    ax.set_ylabel('Price', fontsize=14)
-    ax.set_title(f'{symbol} - Price Zigzag: Highs/Lows After EMA Crosses ({short_span}/{long_span})', fontsize=16, fontweight='bold')
+        color = '#00e676' if point['cross_type'] == 'bull' else '#ef5350'
+        ax.scatter(point['date'], point['price'], color=color, s=220,
+                   zorder=5, alpha=0.85, edgecolors='white', linewidth=1)
+
+    ax.set_xlabel('Date', fontsize=14, color='#c9d1d9')
+    ax.set_ylabel('Price', fontsize=14, color='#c9d1d9')
+    ax.set_title(f'{symbol} - Price Zigzag: Highs/Lows After EMA Crosses ({short_span}/{long_span})',
+                 fontsize=16, fontweight='bold', color='#f0f6fc')
     ax.legend(loc='best', fontsize=12)
-    ax.grid(True, alpha=0.3)
-    
-    # Show readable month labels (e.g., Jan 2026)
+    ax.grid(True, alpha=0.12, linestyle='--', color='#30363d')
+    ax.tick_params(colors='#8b949e')
+    for spine in ax.spines.values():
+        spine.set_edgecolor('#30363d')
+
     ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
     fig.autofmt_xdate(rotation=45, ha='right')
     plt.tight_layout()
-    
+
     return fig
 
 
