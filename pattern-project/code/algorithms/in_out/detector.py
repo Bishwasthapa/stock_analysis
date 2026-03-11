@@ -161,8 +161,7 @@ class TrendDetector:
         Returns classified swings and sequence list.
         """
         classification: Dict[int, Tuple[str, int]] = {}
-        sequences_list: List[Tuple[int, List[int], str]] = []
-        membership: Dict[int, List[Tuple[str, int]]] = {}
+        all_sequences_list: List[Tuple[int, List[int], str]] = []
 
         for i in range(len(swings) - 3):
             p0 = swings[i]
@@ -180,10 +179,20 @@ class TrendDetector:
                 continue
 
             seq_indices = [p0.index, p1.index, p2.index, p3.index]
-            for role, swing_index in enumerate(seq_indices):
-                membership.setdefault(swing_index, []).append((trend_type, role))
+            all_sequences_list.append((p0.index, seq_indices, trend_type))
 
-            sequences_list.append((p0.index, seq_indices, trend_type))
+        # Filter strictly for non-overlapping sequences (sharing endpoint 3 -> 0 is permitted)
+        sequences_list: List[Tuple[int, List[int], str]] = []
+        last_end_idx = -1
+        for seq in all_sequences_list:
+            if seq[1][0] >= last_end_idx:
+                sequences_list.append(seq)
+                last_end_idx = seq[1][3]
+
+        membership: Dict[int, List[Tuple[str, int]]] = {}
+        for seq in sequences_list:
+            for role, swing_index in enumerate(seq[1]):
+                membership.setdefault(swing_index, []).append((seq[2], role))
 
         # Decide final trend/role per swing (for basic tuple return):
         # We also prioritize role 0 here so the exporter prints it correctly.

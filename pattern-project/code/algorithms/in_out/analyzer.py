@@ -99,6 +99,47 @@ def _date_label(value: str) -> str:
         return str(value)
 
 
+def find_all_valid_patterns(rows: List[dict]) -> List[dict]:
+    all_patterns = []
+    for i in range(len(rows) - 3):
+        r0, r1, r2, r3 = rows[i], rows[i+1], rows[i+2], rows[i+3]
+        if not (r0["type"] and r1["type"] and r2["type"] and r3["type"]):
+            continue
+            
+        p0_price = float(r0["price"])
+        p1_price = float(r1["price"])
+        p2_price = float(r2["price"])
+        p3_price = float(r3["price"])
+        
+        is_up = (r0["type"].upper() == 'LOW' and r1["type"].upper() == 'HIGH' and 
+                 r2["type"].upper() == 'LOW' and r3["type"].upper() == 'HIGH' and 
+                 p2_price > p0_price and p3_price > p1_price)
+                 
+        is_down = (r0["type"].upper() == 'HIGH' and r1["type"].upper() == 'LOW' and 
+                   r2["type"].upper() == 'HIGH' and r3["type"].upper() == 'LOW' and 
+                   p2_price < p0_price and p3_price < p1_price)
+                   
+        if is_up or is_down:
+            token = "IN_UP" if is_up else "IN_DOWN"
+            all_patterns.append({
+                "idx_0": int(r0["index"]),
+                "idx_1": int(r1["index"]),
+                "idx_2": int(r2["index"]),
+                "idx_3": int(r3["index"]),
+                "date_0": r0["date"],
+                "date_1": r1["date"],
+                "date_2": r2["date"],
+                "date_3": r3["date"],
+                "date_0_label": _date_label(r0["date"]),
+                "date_1_label": _date_label(r1["date"]),
+                "date_2_label": _date_label(r2["date"]),
+                "date_3_label": _date_label(r3["date"]),
+                "pattern_token": token,
+                "trend_type": "UPTREND" if is_up else "DOWNTREND"
+            })
+    return all_patterns
+
+
 def analyze(
     rows: List[dict],
     out_dir: Path,
@@ -883,16 +924,12 @@ def analyze(
             )
 
     # Build iterative algorithm for transition_pattern_9_18.txt
+    all_patterns = find_all_valid_patterns(rows)
     iterative_transitions = []
-    visited_iter_inputs = set()
+    used_as_result = set()
     
-    for p_start in completed_patterns:
-        if p_start["idx_0"] in visited_iter_inputs:
-            continue
-            
-        current_a = p_start
-        visited_iter_inputs.add(current_a["idx_0"])
-        used_as_result = set()
+    if completed_patterns:
+        current_a = completed_patterns[0]
         
         while True:
             # Find B: >= current_a["idx_3"], skipping and not using any C from previous iterations
@@ -905,9 +942,9 @@ def analyze(
             if not p_b:
                 break
                 
-            # Find C: >= p_b["idx_2"]
+            # Find C: >= p_b["idx_2"] using ALL PATTERNS since C is an output that CAN intersect!
             p_c = None
-            for p in completed_patterns:
+            for p in all_patterns:
                 if int(p["idx_0"]) >= int(p_b["idx_2"]):
                     p_c = p
                     break
@@ -931,7 +968,6 @@ def analyze(
                 used_as_result.add(p_c["idx_0"])
                 
             current_a = p_b
-            visited_iter_inputs.add(current_a["idx_0"])
 
     iter_counter: Dict[Context, Counter] = defaultdict(Counter)
     for a, b, c, c_label in iterative_transitions:
