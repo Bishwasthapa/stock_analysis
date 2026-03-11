@@ -52,6 +52,75 @@ def _fetch_from_github_company_wise(symbol: str, output_path: str) -> bool:
     return False
 
 
+def _fetch_from_nepsealpha_adjusted(symbol: str, output_path: str) -> bool:
+    """
+    Primary provider for true adjusted data: NepseAlpha.
+    Uses curl_cffi to spoof a browser TLS fingerprint and bypass Cloudflare JS challenges.
+    Provides the exact, split/dividend adjusted OHLCV arrays used in their advanced charts.
+    """
+    try:
+        from curl_cffi import requests as cffi_requests
+    except ImportError:
+        print("  curl_cffi not available. Skipping NepseAlpha bypass.")
+        return False
+
+    url = f"https://nepsealpha.com/trading/1/history?symbol={symbol}&resolution=1D&frame=1"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://nepsealpha.com/nepse-chart",
+        "X-Requested-With": "XMLHttpRequest"
+    }
+
+    try:
+        response = cffi_requests.get(url, headers=headers, impersonate="chrome120", timeout=15)
+        if response.status_code != 200:
+            print(f"  NepseAlpha source miss for {symbol}: HTTP {response.status_code}")
+            return False
+            
+        payload = response.json()
+        if payload.get("s") != "ok" or not payload.get("t"):
+            print(f"  NepseAlpha source has no usable OHLC data for {symbol}")
+            return False
+
+        t = payload.get("t", [])
+        o = payload.get("o", [])
+        h = payload.get("h", [])
+        l = payload.get("l", [])
+        c = payload.get("c", [])
+        v = payload.get("v", [])
+        n = min(len(t), len(o), len(h), len(l), len(c), len(v))
+        if n == 0:
+            print(f"  NepseAlpha source returned empty arrays for {symbol}")
+            return False
+
+        dates = [datetime.fromtimestamp(ts, UTC).date().isoformat() for ts in t[:n]]
+        close_series = pd.Series(c[:n], dtype=float)
+        per_change = close_series.pct_change() * 100.0
+        traded_amount = pd.Series(v[:n], dtype=float) * close_series
+
+        df = pd.DataFrame({
+            "published_date": dates,
+            "open": pd.Series(o[:n], dtype=float),
+            "high": pd.Series(h[:n], dtype=float),
+            "low": pd.Series(l[:n], dtype=float),
+            "close": close_series,
+            "per_change": per_change.round(4),
+            "traded_quantity": pd.Series(v[:n], dtype=float),
+            "traded_amount": traded_amount.round(2),
+            "status": 0,
+        })
+
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        df.to_csv(output_path, index=False)
+        print(f"  Downloaded {symbol} directly from NepseAlpha (Adjusted, {n} rows)")
+        return True
+
+    except Exception as e:
+        print(f"  NepseAlpha source error for {symbol}: {e}")
+        return False
+
+
 def _fetch_from_sharesansar_price_history(symbol: str, output_path: str) -> bool:
     """
     Secondary provider: Sharesansar company-price-history DataTable endpoint.
@@ -86,7 +155,7 @@ def _fetch_from_sharesansar_price_history(symbol: str, output_path: str) -> bool
 
         # First page to get recordsTotal
         page_size = 50
-        first_payload = {"company": company_id, "draw": 1, "start": 0, "length": page_size}
+        first_payload = {"company": company_id, "draw": 1, "start": 0, "length": page_size, "adjusted": 1}
         first = session.post(history_url, data=first_payload, headers=post_headers, timeout=20)
         if first.status_code != 200:
             print(f"  Sharesansar price-history miss for {symbol}: HTTP {first.status_code}")
@@ -102,7 +171,7 @@ def _fetch_from_sharesansar_price_history(symbol: str, output_path: str) -> bool
         start = page_size
         draw = 2
         while start < total:
-            payload = {"company": company_id, "draw": draw, "start": start, "length": page_size}
+            payload = {"company": company_id, "draw": draw, "start": start, "length": page_size, "adjusted": 1}
             resp = session.post(history_url, data=payload, headers=post_headers, timeout=20)
             if resp.status_code != 200:
                 break
@@ -163,6 +232,7 @@ def _fetch_from_sharesansar_chart_api(symbol: str, output_path: str) -> bool:
         "from": 0,
         "to": 9999999999,
         "countback": 5000,
+        "adjusted": "true",
     }
     headers = {
         "User-Agent": "Mozilla/5.0",
@@ -222,12 +292,18 @@ def _fetch_from_sharesansar_chart_api(symbol: str, output_path: str) -> bool:
 
 def fetch_nepse_csv(symbol: str, output_path: str) -> bool:
     """Download NEPSE CSV for symbol using fallback providers."""
-    if _fetch_from_github_company_wise(symbol, output_path):
+    # Prioritize NepseAlpha (curl_cffi) for true adjusted data
+    if _fetch_from_nepsealpha_adjusted(symbol, output_path):
         return True
+    # Fallback to Sharesansar for adjusted data
     if _fetch_from_sharesansar_price_history(symbol, output_path):
         return True
     if _fetch_from_sharesansar_chart_api(symbol, output_path):
         return True
+    # Keep GitHub as a last-resort (likely unadjusted)
+    if _fetch_from_github_company_wise(symbol, output_path):
+        return True
+    return False
     return False
 
 
@@ -250,12 +326,64 @@ def load_stock_data(
     symbol: str,
     data_dir: str = 'data/nepal',
     refresh_mode: str = 'auto',
-    max_stale_days: int = 7
+    max_stale_days: int = 0
 ) -> pd.DataFrame:
     """Load stock CSV data for a given symbol from the data directory."""
     symbol = symbol.upper()
+    json_path = os.path.join(data_dir, f'{symbol}.json')
     csv_path = os.path.join(data_dir, f'{symbol}.csv')
+    
+    # If the user pasted the raw NepseAlpha Network JSON, parse it and create the CSV
+    if os.path.exists(json_path):
+        print(f"  Attempting to convert raw NepseAlpha JSON for {symbol}...")
+        try:
+            import json
+            with open(json_path, 'r', encoding='utf-8') as f:
+                payload = json.load(f)
+            if payload.get("s") == "ok" and payload.get("t"):
+                t = payload.get("t", [])
+                o = payload.get("o", [])
+                h = payload.get("h", [])
+                l = payload.get("l", [])
+                c = payload.get("c", [])
+                v = payload.get("v", [])
+                n = min(len(t), len(o), len(h), len(l), len(c), len(v))
+                dates = [datetime.fromtimestamp(ts, UTC).date().isoformat() for ts in t[:n]]
+                close_series = pd.Series(c[:n], dtype=float)
+                per_change = close_series.pct_change() * 100.0
+                traded_amount = pd.Series(v[:n], dtype=float) * close_series
+
+                df_json = pd.DataFrame({
+                    "published_date": dates,
+                    "open": pd.Series(o[:n], dtype=float),
+                    "high": pd.Series(h[:n], dtype=float),
+                    "low": pd.Series(l[:n], dtype=float),
+                    "close": close_series,
+                    "per_change": per_change.round(4),
+                    "traded_quantity": pd.Series(v[:n], dtype=float),
+                    "traded_amount": traded_amount.round(2),
+                    "status": 0,
+                })
+                os.makedirs(data_dir, exist_ok=True)
+                df_json.to_csv(csv_path, index=False)
+                print(f"  Successfully converted JSON to CSV for {symbol} ({n} rows).")
+        except Exception as e:
+            print(f"  Error converting JSON to CSV for {symbol}: {e}")
+
     local_exists = os.path.exists(csv_path)
+    
+    # Detect if user manually placed an adjusted export (e.g., from TradingView/NepseAlpha)
+    is_manual_export = False
+    if local_exists:
+        try:
+            # typical TV export has 6-7 columns (time, open, high, low, close, volume)
+            df_check = pd.read_csv(csv_path, nrows=5)
+            # Make sure it's not our own script's generated structure which uses 'published_date' or 'Open' explicitly
+            if len(df_check.columns) <= 7 and any(c.lower() in ['time', 'date'] for c in df_check.columns):
+                if 'published_date' not in df_check.columns:  # exclude our script's generated standard
+                    is_manual_export = True
+        except Exception:
+            pass
 
     if not local_exists:
         print(f"  Local data not found: {csv_path}")
@@ -267,7 +395,9 @@ def load_stock_data(
             )
     else:
         should_refresh = False
-        if refresh_mode == 'always':
+        if is_manual_export:
+            print(f"  Detected manual CSV export for {symbol}. Bypassing auto-refresh to preserve adjusted data.")
+        elif refresh_mode == 'always':
             should_refresh = True
         elif refresh_mode == 'auto':
             latest_local_date = _read_latest_local_date(csv_path)
@@ -292,9 +422,13 @@ def load_stock_data(
     lower_to_actual = {c.strip().lower(): c for c in df.columns}
     if 'close' in lower_to_actual and 'Close' not in df.columns:
         df.rename(columns={lower_to_actual['close']: 'Close'}, inplace=True)
+    if 'high' in lower_to_actual and 'High' not in df.columns:
+        df.rename(columns={lower_to_actual['high']: 'High'}, inplace=True)
+    if 'low' in lower_to_actual and 'Low' not in df.columns:
+        df.rename(columns={lower_to_actual['low']: 'Low'}, inplace=True)
 
-    # Parse date column (handles case variants)
-    date_key_candidates = ['date', 'datetime', 'published_date']
+    # Parse date column (handles case variants including TradingView's "time")
+    date_key_candidates = ['date', 'datetime', 'published_date', 'time']
     date_col = None
     for key in date_key_candidates:
         if key in lower_to_actual:
@@ -308,6 +442,10 @@ def load_stock_data(
 
     if 'Close' not in df.columns:
         raise KeyError(f"No close column found in {csv_path}. Expected a Close/close column.")
+    if 'High' not in df.columns or 'Low' not in df.columns:
+        print(f"  Warning: High/Low columns missing in {csv_path}, falling back to Close for extremes.")
+        if 'High' not in df.columns: df['High'] = df['Close']
+        if 'Low' not in df.columns: df['Low'] = df['Close']
     
     df = df.sort_values('Date').reset_index(drop=True)
     return df
@@ -401,11 +539,12 @@ def extract_zigzag_points(df: pd.DataFrame) -> list:
         """
         if end_idx <= 2:
             return None
-        s = df['Close'].iloc[:end_idx]
         # local high/low with 1-bar neighborhood
         if extreme_type == 'high':
+            s = df['High'].iloc[:end_idx]
             candidates = s[(s >= s.shift(1)) & (s > s.shift(-1))].index.tolist()
         else:
+            s = df['Low'].iloc[:end_idx]
             candidates = s[(s <= s.shift(1)) & (s < s.shift(-1))].index.tolist()
         return int(candidates[-1]) if candidates else None
 
@@ -422,13 +561,14 @@ def extract_zigzag_points(df: pd.DataFrame) -> list:
         init_idx = _nearest_local_extreme_before(first_cross_idx, initial_type)
         if init_idx is None:
             if initial_type == 'high':
-                init_idx = int(pre_window['Close'].idxmax())
+                init_idx = int(pre_window['High'].idxmax())
             else:
-                init_idx = int(pre_window['Close'].idxmin())
+                init_idx = int(pre_window['Low'].idxmin())
         points.append({
             'index': init_idx,
             'date': df.loc[init_idx, 'Date'],
-            'price': float(df.loc[init_idx, 'Close']),
+            'date_label': df.loc[init_idx, 'Date'].strftime('%d %b %Y') if hasattr(df.loc[init_idx, 'Date'], 'strftime') else str(df.loc[init_idx, 'Date']),
+            'price': float(df.loc[init_idx, 'High' if initial_type == 'high' else 'Low']),
             'type': initial_type,
             'cross_type': 'seed',
         })
@@ -457,14 +597,15 @@ def extract_zigzag_points(df: pd.DataFrame) -> list:
             target_type = 'low' if last_point_type == 'high' else 'high'
 
         if target_type == 'high':
-            point_idx = window['Close'].idxmax()
+            point_idx = window['High'].idxmax()
         else:
-            point_idx = window['Close'].idxmin()
+            point_idx = window['Low'].idxmin()
 
         points.append({
             'index': int(point_idx),
             'date': df.loc[point_idx, 'Date'],
-            'price': float(df.loc[point_idx, 'Close']),
+            'date_label': df.loc[point_idx, 'Date'].strftime('%d %b %Y') if hasattr(df.loc[point_idx, 'Date'], 'strftime') else str(df.loc[point_idx, 'Date']),
+            'price': float(df.loc[point_idx, 'High' if target_type == 'high' else 'Low']),
             'type': target_type,
             'cross_type': 'bull' if cross_val == 1 else 'bear',
         })
@@ -545,11 +686,19 @@ def plot_highs_lows_after_cross(
     ax.plot(dates, prices, label='Price Action Zigzag', color='#8b949e',
             linewidth=2, marker='o', markersize=8, alpha=0.7)
 
+    price_range = max(prices) - min(prices) if len(prices) > 1 else 1
     # Color code points: bull cross = neon green, bear cross = bright red
-    for point in points_sorted:
+    for idx_e, point in enumerate(points_sorted):
         color = '#00e676' if point['cross_type'] == 'bull' else '#ef5350'
         ax.scatter(point['date'], point['price'], color=color, s=220,
                    zorder=5, alpha=0.85, edgecolors='white', linewidth=1)
+        
+        # Consistent "nice" label style: muted, rotated, offset below dot
+        d_obj = pd.to_datetime(point['date'])
+        y_off = price_range * (0.04 if idx_e % 2 == 0 else 0.07)
+        ax.text(point['date'], point['price'] - y_off, d_obj.strftime('%d %b'),
+                fontsize=7.5, color='#8b949e', ha='right', va='top', 
+                rotation=40, fontweight='bold', alpha=0.9)
 
     ax.set_xlabel('Date', fontsize=14, color='#c9d1d9')
     ax.set_ylabel('Price', fontsize=14, color='#c9d1d9')
@@ -561,8 +710,8 @@ def plot_highs_lows_after_cross(
     for spine in ax.spines.values():
         spine.set_edgecolor('#30363d')
 
-    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+    ax.xaxis.set_major_locator(mdates.YearLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
     fig.autofmt_xdate(rotation=45, ha='right')
     plt.tight_layout()
 

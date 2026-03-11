@@ -30,7 +30,7 @@ def main() -> None:
     parser.add_argument("--ema-short", type=int, default=9)
     parser.add_argument("--ema-long", type=int, default=18)
     parser.add_argument("--refresh", choices=["auto", "always", "never"], default="auto")
-    parser.add_argument("--max-stale-days", type=int, default=7)
+    parser.add_argument("--max-stale-days", type=int, default=0)
     parser.add_argument("--years", type=int, default=None,
                         help="Limit analysis to last N years of data (e.g. 5). Default: all data.")
     args = parser.parse_args()

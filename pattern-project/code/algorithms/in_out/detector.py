@@ -23,6 +23,7 @@ class SwingPoint:
     price: float
     type: str  # 'HIGH' or 'LOW'
     date: Optional[str] = None
+    date_label: Optional[str] = None
     
     def __repr__(self):
         return f"SwingPoint(idx={self.index}, price={self.price}, type={self.type})"
@@ -51,7 +52,8 @@ class DataLoader:
                 index=idx,
                 price=row['price'],
                 type=row['type'].upper(),
-                date=str(row.get('date', '') or '').split(' ')[0]  # keep date part only
+                date=str(row.get('date', '') or '').split(' ')[0],  # keep date part only
+                date_label=str(row.get('date_label', ''))
             )
             swings.append(swing)
         
@@ -325,6 +327,7 @@ class ResultExporter:
                 'price': swing.price,
                 'type': swing.type,
                 'date': swing.date,
+                'date_label': swing.date_label,
                 'pattern_role': role_str,
                 'classification': cls,
                 'trend_type': trend_type,
@@ -452,11 +455,12 @@ class ResultExporter:
         for idx_e, swing in enumerate(swings):
             x = date_by_index.get(swing.index, pd.to_datetime(swing.date))
             y_off = price_range * (0.03 if idx_e % 2 == 0 else 0.055)
-            ax.text(x, swing.price - y_off, x.strftime('%d %b %y'),
-                    fontsize=6.5, ha='right', va='top', rotation=40,
-                    color='#8b949e', alpha=0.9)
+            ax.text(x, swing.price - y_off, x.strftime('%d %b'),
+                    fontsize=7.5, ha='right', va='top', rotation=40,
+                    color='#8b949e', alpha=0.9,
+                    fontweight='bold')
 
-        ax.set_xlabel('Date', fontsize=12, color='#c9d1d9')
+        ax.set_xlabel('Year', fontsize=12, color='#c9d1d9')
         ax.set_ylabel('Price', fontsize=12, color='#c9d1d9')
         ax.set_title(f'{symbol} — IN/OUT Pattern Classification', fontsize=14,
                      fontweight='bold', color='#f0f6fc')
@@ -473,11 +477,10 @@ class ResultExporter:
             Line2D([0],[0], marker='o', color='w', markerfacecolor=COLOR['OUT_DOWN'], markersize=10, label='OUT_DOWN'),
         ], loc='upper left', fontsize=10, framealpha=0.85)
 
-        locator = mdates.AutoDateLocator(minticks=6, maxticks=10)
-        ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+        ax.xaxis.set_major_locator(mdates.YearLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
         for lbl in ax.get_xticklabels():
-            lbl.set_rotation(35); lbl.set_horizontalalignment('right'); lbl.set_fontsize(9)
+            lbl.set_rotation(0); lbl.set_horizontalalignment('center'); lbl.set_fontsize(10)
         plt.tight_layout()
 
         fig.savefig(output_path, dpi=260, bbox_inches='tight')
