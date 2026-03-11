@@ -940,8 +940,13 @@ def analyze(
         
         grouped_iter = defaultdict(list)
         for (a_token, b_token), cnts in sorted(iter_counter.items()):
-            total_ctx = sum(cnts.values())
-            for c_seq, cnt in sorted(cnts.items(), key=lambda x: (-x[1], x[0])):
+            # Filter out END_OF_DATA from the rules summary
+            valid_cnts = {k: v for k, v in cnts.items() if "END_OF_DATA" not in k}
+            total_ctx = sum(valid_cnts.values())
+            if total_ctx == 0:
+                continue
+                
+            for c_seq, cnt in sorted(valid_cnts.items(), key=lambda x: (-x[1], x[0])):
                 pct = (cnt / total_ctx) * 100.0 if total_ctx else 0.0
                 grouped_iter[(a_token, b_token)].append({
                     "seq": c_seq,
