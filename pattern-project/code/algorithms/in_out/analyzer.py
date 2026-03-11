@@ -894,6 +894,91 @@ def analyze(
                 f"dates: {a['date_0_label']} + {b['date_0_label']} -> {c['date_0_label']}\n"
             )
 
+    # Build iterative algorithm for transition_pattern_9_18.txt
+    iterative_transitions = []
+    visited_iter_inputs = set()
+    
+    for p_start in completed_patterns:
+        if p_start["idx_0"] in visited_iter_inputs:
+            continue
+            
+        current_a = p_start
+        visited_iter_inputs.add(current_a["idx_0"])
+        used_as_result = set()
+        
+        while True:
+            # Find B: >= current_a["idx_3"], skipping and not using any C from previous iterations
+            p_b = None
+            for p in completed_patterns:
+                if p["idx_0"] >= current_a["idx_3"] and p["idx_0"] not in used_as_result:
+                    p_b = p
+                    break
+                    
+            if not p_b:
+                break
+                
+            # Find C: >= p_b["idx_2"]
+            p_c = None
+            for p in completed_patterns:
+                if p["idx_0"] >= p_b["idx_2"]:
+                    p_c = p
+                    break
+                    
+            if p_c:
+                intermediate_path = []
+                for j in range(p_b["idx_2"], p_c["idx_0"]):
+                    if labels[j] not in keep_tokens:
+                        st = swing_types[j]
+                        if st == "HIGH":
+                            intermediate_path.append("INVALID_UP")
+                        elif st == "LOW":
+                            intermediate_path.append("INVALID_DOWN")
+                
+                if intermediate_path:
+                    c_label = " -> ".join(intermediate_path) + " -> " + p_c["pattern_token"]
+                else:
+                    c_label = p_c["pattern_token"]
+                    
+                iterative_transitions.append((current_a, p_b, p_c, c_label))
+                used_as_result.add(p_c["idx_0"])
+                
+            current_a = p_b
+            visited_iter_inputs.add(current_a["idx_0"])
+
+    iter_counter: Dict[Context, Counter] = defaultdict(Counter)
+    for a, b, c, c_label in iterative_transitions:
+        ctx = (a["pattern_token"], b["pattern_token"])
+        iter_counter[ctx][c_label] += 1
+
+    iter_txt = txt_dir / "transition_pattern_9_18.txt"
+    with iter_txt.open("w", encoding="utf-8") as f:
+        f.write("Pattern iteration (A + B -> C)\n")
+        f.write("B starts >= A's point 3. C starts >= B's point 2.\n")
+        f.write("Next iteration input1 = B.\n\n")
+        
+        grouped_iter = defaultdict(list)
+        for (a_token, b_token), cnts in sorted(iter_counter.items()):
+            total_ctx = sum(cnts.values())
+            for c_token, cnt in sorted(cnts.items(), key=lambda x: (-x[1], x[0])):
+                pct = (cnt / total_ctx) * 100.0 if total_ctx else 0.0
+                grouped_iter[(a_token, b_token)].append({
+                    "c": c_token,
+                    "count": cnt,
+                    "total": total_ctx,
+                    "pct": pct
+                })
+                
+        for key in sorted(grouped_iter.keys()):
+            a_token, b_token = key
+            f.write(f"{a_token} + {b_token}:\n")
+            for row in grouped_iter[key]:
+                f.write(f"  -> {row['c']} | count={row['count']}/{row['total']} ({row['pct']:.2f}%)\n")
+            f.write("\n")
+            
+        f.write("Chronological Iteration Sequences:\n")
+        for i, (a, b, c, c_label) in enumerate(iterative_transitions):
+            f.write(f"{i+1}. {a['pattern_token']} (@{a['date_0_label']}) + {b['pattern_token']} (@{b['date_0_label']}) -> {c_label} (@{c['date_0_label']})\n")
+
     stable_count = sum(1 for r in context_rows if r["stability"] == "STABLE")
     unstable_count = sum(1 for r in context_rows if r["stability"] == "UNSTABLE")
 
@@ -1005,6 +1090,7 @@ def main() -> None:
     print(f"  - {csv_dir / 'movement_pattern_transitions.csv'}")
     print(f"  - {txt_dir / 'transition_pattern_chain_9_18.txt'}")
     print(f"  - {csv_dir / 'movement_transition_examples.csv'}")
+    print(f"  - {txt_dir / 'transition_pattern_9_18.txt'}")
 
 
 if __name__ == "__main__":
