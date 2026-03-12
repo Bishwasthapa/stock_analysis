@@ -207,22 +207,45 @@ def get_strategy_report(symbol: str, years: Optional[int] = Query(None)):
 
 @app.get("/api/stocks/{symbol}/recommendations")
 def get_recommendations(symbol: str):
-    """Provides structured advice and reliability scores for the dashboard."""
+    """Provides structured advice and reliability scores for the dashboard.
+    Enriched with entropy-based health metrics for the overall stock.
+    """
     symbol = symbol.upper()
     project_root = Path(__file__).resolve().parent.parent.parent
-    rec_path = project_root / f"results/nepal/{symbol}/in_out/csv/strategy_recommendations.csv"
+    base_path = project_root / f"results/nepal/{symbol}/in_out/csv"
+    rec_path = base_path / "strategy_recommendations.csv"
+    stats_path = base_path / "stats_context_summary.csv"
 
     if not os.path.exists(rec_path):
         raise HTTPException(status_code=404, detail=f"No recommendations found for {symbol}.")
 
     try:
-        df = pd.read_csv(rec_path).fillna('').astype(object)
-        if 'count' in df.columns:
-            df = df.sort_values(by='count', ascending=False)
-        
-        # Handle NaNs
-        df = df.fillna("")
-        return df.to_dict(orient="records")
+        # Load best recommendations
+        df_rec = pd.read_csv(rec_path).fillna('').astype(object)
+        recs = df_rec.to_dict(orient="records")
+
+        # Load context stats for overall health
+        health_label = "MODERATE"
+        if os.path.exists(stats_path):
+            df_stats = pd.read_csv(stats_path)
+            # Filter for contexts with some volume (at least 5 samples)
+            valid_contexts = df_stats[df_stats['total_context_count'] >= 5]
+            if not valid_contexts.empty:
+                avg_entropy = valid_contexts['entropy'].mean()
+                if avg_entropy < 0.7: health_label = "STRONG"
+                elif avg_entropy > 1.2: health_label = "WEAK"
+            else:
+                # Fallback to general entropy if no high-volume contexts
+                avg_entropy = df_stats['entropy'].mean() if not df_stats.empty else 1.0
+                if avg_entropy < 0.7: health_label = "STRONG"
+                elif avg_entropy > 1.2: health_label = "WEAK"
+
+        # Embed health label in the first rec or return separately
+        # For simplicity, we add it to a wrapper object
+        return {
+            "health": health_label,
+            "recommendations": recs
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

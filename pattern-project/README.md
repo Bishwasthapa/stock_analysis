@@ -34,7 +34,7 @@ Start the local API server, then open the browser at `http://localhost:8000`.
 nohup venv/bin/uvicorn code.api.main:app --host 0.0.0.0 --port 8000 >> /tmp/api.log 2>&1 &
 ```
 > **Note:** The server is **not** persistent across reboots — run the command above each time to start it.  
-> To stop it: `pkill -f uvicorn`
+> To stop it: run `./stop_portal.sh`
 
 
 ## 📂 Key Folders

@@ -968,9 +968,12 @@
             if (!comboRes.ok) throw new Error("No combo data");
             const combos = await comboRes.json();
 
-            // Fetch Stability/Strength from recommendations
+            // Fetch Stability/Strength from recommendations (now returns {health, recommendations})
             const recRes = await fetch(`/api/stocks/${sym}/recommendations`);
-            const recs = recRes.ok ? await recRes.json() : [];
+            const recData = recRes.ok ? await recRes.json() : { health: "MODERATE", recommendations: [] };
+            const recs = recData.recommendations;
+            const overallHealth = recData.health;
+
 
             list.innerHTML = '';
             let totalProb = 0;
@@ -1000,14 +1003,20 @@
                 totalProb += (ws !== null ? ws : parseFloat(c.probability)) || 0;
             });
 
-            // Update stats
-            const avgRel  = combos.length > 0 ? (totalProb / combos.length).toFixed(1) + '%' : '—';
-            const health  = recs.length > 0 ? recs[0].strength : "UNKNOWN";
+            // Better Reliability: Average of Top-5 Wilson Scores
+            const sortedByWS = [...combos].sort((a,b) => (b.wilson_score || 0) - (a.wilson_score || 0));
+            const top5 = sortedByWS.slice(0, 5);
+            const totalTopWS = top5.reduce((sum, c) => sum + (c.wilson_score || 0), 0);
+            const avgRel = top5.length > 0 ? (totalTopWS / top5.length).toFixed(1) + '%' : '—';
             
             document.getElementById('modalReliability').innerText = avgRel;
-            document.getElementById('modalReliability').style.color = (parseFloat(avgRel) > 50) ? 'var(--green)' : 'var(--orange)';
-            document.getElementById('modalHealth').innerText = health.toUpperCase();
-            document.getElementById('modalHealth').style.color = (health === 'STRONG' || health === 'STABLE') ? 'var(--blue)' : 'var(--orange)';
+            document.getElementById('modalReliability').style.color = (parseFloat(avgRel) > 30) ? 'var(--green)' : 'var(--orange)';
+            
+            document.getElementById('modalHealth').innerText = overallHealth.toUpperCase();
+            document.getElementById('modalHealth').style.color = 
+                (overallHealth === 'STRONG') ? 'var(--green)' : 
+                (overallHealth === 'WEAK') ? 'var(--red)' : 'var(--orange)';
+
 
         } catch (e) {
             list.innerHTML = `<div style="color: var(--red); padding: 20px;">⚠ NO STRATEGY DATA FOUND. RUN FULL ANALYSIS FIRST.</div>`;
