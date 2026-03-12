@@ -98,6 +98,17 @@ def _parse_role(value: str) -> int:
         return -1
 
 
+def _wilson_score(ups: int, total: int, z: float = 1.28) -> float:
+    """
+    Wilson score interval lower bound.
+    z=1.28 for 80% confidence, z=1.96 for 95%.
+    """
+    if total == 0:
+        return 0.0
+    p = ups / total
+    return (p + z*z/(2*total) - z * math.sqrt((p*(1-p) + z*z/(4*total))/total)) / (1 + z*z/total)
+
+
 def _date_label(value: str) -> str:
     try:
         return datetime.strptime(str(value), "%Y-%m-%d").strftime("%d %b %Y")
@@ -741,47 +752,76 @@ def analyze(
             if not p_b:
                 break
                 
-            # Now find the Next Pattern C (Target) after p_b
+            # IDENTIFY THE IMMEDIATE TARGET
+            # Rule: If p_c is 'IN' (chained/intersected), Target = Pattern C.
+            # Else, Target = The very first swing (OUT_UP or OUT_DOWN).
+            
             p_c = None
-            p_c_idx = -1
-            # Search ALL patterns for C, must start AFTER p_b starts
-            for j, p_cand in enumerate(all_patterns):
+            for p_cand in all_patterns:
                 if p_cand["idx_0"] > p_b["idx_0"]:
                     p_c = p_cand
-                    # To keep sliding window logic consistent, we need C's index in completed_patterns if possible
-                    # but since all_patterns is a superset, we'll just track the pattern itself.
                     break
+
+            is_linked = p_c and (p_c["idx_0"] <= p_b["idx_3"])
             
-            # Identify the Path (Swings between B's end and C's start)
-            path_swings = []
-            target_start_idx = p_c["idx_0"] if p_c else len(rows) - 1
-            
-            # If they are NOT chained at the same index, there is at least one swing
-            if target_start_idx > p_b["idx_3"]:
-                for k in range(p_b["idx_3"] + 1, target_start_idx + 1):
-                    st = swing_types[k]
-                    path_swings.append(f"SWING_{st.upper()}")
-            
-            path_label = " -> ".join(path_swings) if path_swings else ""
-            
-            if p_c:
-                # Naming for target relative to B
-                is_linked = p_c["idx_0"] <= p_b["idx_3"]
+            if is_linked:
+                # IMMEDIATE PATTERN TARGET
+                target_start_idx = p_c["idx_0"]
+                scan_end = p_c["idx_3"]
                 dir_str = "UP" if p_c["trend_type"] == "UPTREND" else "DOWN"
-                target_label = f"{'IN' if is_linked else 'OUT'}_{dir_str}"
+                target_label = f"IN_{dir_str}"
+                path_swings = [] # Chained/Intersected patterns have no gap path
             else:
-                target_label = "END_OF_DATA"
+                # IMMEDIATE SWING TARGET (There is a gap)
+                # We stop at the very first swing after B ends
+                target_start_idx = p_b["idx_3"] + 1
+                scan_end = target_start_idx
+                
+                # Use swing_types to label this single outside move
+                st = swing_types[target_start_idx] if target_start_idx < len(rows) else "END"
+                # Renamed for better readability as per user request
+                dir_label = "UP" if st.upper() == "HIGH" else "DOWN"
+                target_label = f"SWING_{dir_label}"
+                path_swings = [f"SWING_{st.upper()}"]
+                
+                # Capture the date of this specific swing for the report
+                t_date_val = rows[target_start_idx]["date_label"] if target_start_idx < len(rows) else "N/A"
+                p_c = {"date_0_label": t_date_val} # Fake p_c object just for the date
+            
+            # Entry and Direction
+            entry_price = prices_num[p_b["idx_3"]]
+            is_long = types_norm[p_b["idx_3"]] == "LOW"
+            
+            # Peak Excursion tracking (from B end to Target end)
+            peak_profit = 0.0
+            max_drawdown = 0.0
+            
+            for k in range(p_b["idx_3"] + 1, min(scan_end + 1, len(rows))):
+                if math.isnan(prices_num[k]): continue
+                
+                if is_long:
+                    ret = (prices_num[k] - entry_price) / entry_price
+                else:
+                    ret = (entry_price - prices_num[k]) / entry_price
+                
+                peak_profit = max(peak_profit, ret)
+                max_drawdown = min(max_drawdown, ret)
+
+            path_label = " -> ".join(path_swings) if path_swings else ""
+            efficiency = len(path_swings)
             
             iterative_transitions.append({
                 "a": p_a,
                 "b": p_b,
                 "path": path_label,
                 "target": target_label,
+                "peak_profit": peak_profit * 100.0,
+                "drawdown": max_drawdown * 100.0,
+                "efficiency": efficiency,
                 "p_c_obj": p_c
             })
             
             # SLIDING WINDOW: next input1 = current input2
-            # We need to find the next p_b_idx in completed_patterns for the next loop
             p_a_idx = p_b_idx
 
     iter_counter: Dict[Context, Counter] = defaultdict(Counter)
@@ -806,38 +846,118 @@ def analyze(
         f.write("Chronological Strategy Sequences:\n")
         for i, trans in enumerate(iterative_transitions):
             a, b, path, target = trans["a"], trans["b"], trans["path"], trans["target"]
+            pk, eff = trans["peak_profit"], trans["efficiency"]
             t_date = trans["p_c_obj"]["date_0_label"] if trans["p_c_obj"] else "N/A"
             if path:
-                f.write(f"{i+1}. {a['pattern_token']} ({a['date_0_label']}) + {b['pattern_token']} ({b['date_0_label']}) -> [{path}] -> {target} ({t_date})\n")
+                f.write(f"{i+1}. {a['pattern_token']} ({a['date_0_label']}) + {b['pattern_token']} ({b['date_0_label']}) -> [Peak +{pk:.1f}% | Eff: {eff}] -> {target} ({t_date})\n")
             else:
-                f.write(f"{i+1}. {a['pattern_token']} ({a['date_0_label']}) + {b['pattern_token']} ({b['date_0_label']}) -> {target} ({t_date})\n")
+                f.write(f"{i+1}. {a['pattern_token']} ({a['date_0_label']}) + {b['pattern_token']} ({b['date_0_label']}) -> [Peak +{pk:.1f}%] -> {target} ({t_date})\n")
 
         f.write("\n")
 
-        # ── Probability tables ──
-        grouped_iter = defaultdict(list)
-        for (a_token, b_token), cnts in sorted(iter_counter.items()):
-            # Filter out END_OF_DATA from the rules summary
-            valid_cnts = {k: v for k, v in cnts.items() if "END_OF_DATA" not in k}
-            total_ctx = sum(valid_cnts.values())
-            if total_ctx == 0:
-                continue
-                
-            for c_seq, cnt in sorted(valid_cnts.items(), key=lambda x: (-x[1], x[0])):
-                pct = (cnt / total_ctx) * 100.0 if total_ctx else 0.0
-                grouped_iter[(a_token, b_token)].append({
-                    "seq": c_seq,
-                    "count": cnt,
-                    "total": total_ctx,
-                    "pct": pct
-                })
-                
-        for key in sorted(grouped_iter.keys()):
-            a_token, b_token = key
+        # ── Probability tables: Structural AND Profit ──
+        # Group by setup
+        setup_groups = defaultdict(list)
+        for trans in iterative_transitions:
+            ctx = (trans["a"]["pattern_token"], trans["b"]["pattern_token"])
+            if "END_OF_DATA" not in trans["target"]:
+                setup_groups[ctx].append(trans)
+
+        for ctx, transitions in sorted(setup_groups.items()):
+            a_token, b_token = ctx
+            total = len(transitions)
+            if total == 0: continue
+
             f.write(f"{a_token} + {b_token}:\n")
-            for row in grouped_iter[key]:
-                f.write(f"  -> {row['seq']} | count={row['count']}/{row['total']} ({row['pct']:.2f}%)\n")
+            
+            # 1. Structural Targets (Count unique sequences)
+            seq_counts = Counter()
+            for t in transitions:
+                if t['path']:
+                    seq_counts[f"[{t['path']}] -> {t['target']}"] += 1
+                else:
+                    seq_counts[t['target']] += 1
+            
+            f.write("  (Structural Targets / Next Patterns)\n")
+            for seq, count in sorted(seq_counts.items(), key=lambda x: (-x[1], x[0])):
+                pct = (count / total) * 100
+                f.write(f"    -> {seq:40} | count={count}/{total} ({pct:.2f}%)\n")
+            
+            # 2. Hybrid Profit Buckets (Cumulative)
+            f.write("  (Profit Predictability Machine)\n")
+            for threshold in [5, 10, 15, 20]:
+                hit_count = sum(1 for t in transitions if t["peak_profit"] >= threshold)
+                prob = (hit_count / total) * 100
+                f.write(f"    -> At Least +{threshold}% Profit reached     | count={hit_count}/{total} ({prob:.1f}%)\n")
+            
+            # 3. Efficiency Stats
+            avg_eff = sum(t["efficiency"] for t in transitions) / total
+            f.write(f"    -> Average Messiness (Swing Count)    | {avg_eff:.1f} swings\n")
             f.write("\n")
+
+    # --- 10) EXPORT LIVE FORECAST ---
+    # Current State = Last 2 non-intersecting completed patterns
+    print(f"DEBUG: Completed patterns count = {len(completed_patterns)}")
+    if len(completed_patterns) >= 2:
+        p_b = completed_patterns[-1]
+        # Find the latest p_a that doesn't intersect p_b
+        p_a = None
+        for i in range(len(completed_patterns) - 2, -1, -1):
+            cand_a = completed_patterns[i]
+            if cand_a["idx_3"] <= p_b["idx_0"]:
+                p_a = cand_a
+                break
+        
+        print(f"DEBUG: p_a found = {p_a is not None}")
+        if p_a:
+            ctx = (p_a["pattern_token"], p_b["pattern_token"])
+            print(f"DEBUG: Current Context = {ctx}")
+            matches = setup_groups.get(ctx, [])
+            
+            forecast = {
+                "symbol": out_dir.parent.name, # Guess from path
+                "current_setup": f"{ctx[0]} + {ctx[1]}",
+                "last_pattern_date": p_b["date_3_label"],
+                "total_historical_matches": len(matches),
+                "outcomes": []
+            }
+            
+            if matches:
+                # Group by structural target for cleaner UI display
+                target_map = {}
+                for m in matches:
+                    key = (m["path"], m["target"])
+                    if key not in target_map:
+                        target_map[key] = []
+                    target_map[key].append(m)
+                
+                for key, trans_list in target_map.items():
+                    path, target = key
+                    count = len(trans_list)
+                    raw_prob = (count / len(matches)) * 100
+                    
+                    # Profit machine for THIS specific path->target combo
+                    pm = {}
+                    for thresh in [5, 10, 15, 20]:
+                        hits = sum(1 for t in trans_list if t["peak_profit"] >= thresh)
+                        pm[f"at_least_{thresh}"] = round((hits / count) * 100, 1)
+                    
+                    forecast["outcomes"].append({
+                        "path": path,
+                        "target": target,
+                        "count": count,
+                        "probability": round(raw_prob, 1),
+                        "wilson_score": round(_wilson_score(count, len(matches)) * 100, 1),
+                        "profit_machine": pm,
+                        "is_bullish": "UP" in target
+                    })
+                
+                # Sort outcomes by Wilson Score
+                forecast["outcomes"].sort(key=lambda x: x["wilson_score"], reverse=True)
+            
+            import json
+            with open(csv_dir / "current_forecast.json", "w") as f_json:
+                json.dump(forecast, f_json, indent=2)
 
 
 

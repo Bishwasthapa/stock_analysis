@@ -456,6 +456,57 @@
             max-height: none;
             cursor: zoom-out;
         }
+
+        /* ── Live Forecast Card ── */
+        #forecast-panel {
+            background: var(--glass);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 24px;
+            display: none; /* Shown only when data exists */
+            animation: fadeIn 0.6s ease-out;
+            grid-column: 1 / -1; /* Span both columns in scorecard */
+            border-left: 4px solid var(--blue);
+        }
+        .forecast-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1.8fr;
+            gap: 24px;
+        }
+        .sentiment-gauge {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            justify-content: center;
+        }
+        .gauge-bar {
+            height: 12px;
+            background: var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+        }
+        .gauge-fill { height: 100%; transition: width 1s cubic-bezier(0.16, 1, 0.3, 1); }
+        .gauge-bull { background: var(--green); box-shadow: 0 0 10px rgba(0, 230, 118, 0.3); }
+        .gauge-bear { background: var(--red); box-shadow: 0 0 10px rgba(255, 82, 82, 0.3); }
+
+        .forecast-outcomes {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .forecast-item {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .forecast-item.top-pick { border-color: var(--blue); background: rgba(33, 150, 243, 0.05); }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .viz-header {
             padding: 20px 30px;
             display: flex;
@@ -583,7 +634,7 @@
                 <span class="price-change up" id="priceChange">+0.00%</span>
             </div>
         </div>
-        <div class="stats-grid">
+        <div class="stats-grid" id="mainStats">
             <div class="stat-card">
                 <div class="stat-label">Bull Signals</div>
                 <div class="stat-val" style="color: var(--green)" id="bullCount">0</div>
@@ -593,11 +644,12 @@
                 <div class="stat-val" style="color: var(--red)" id="bearCount">0</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">Reliability</div>
+                <div class="stat-label">Reliability Score</div>
                 <div class="stat-val" id="reliabilityScore">85%</div>
             </div>
         </div>
     </div>
+
 
     <div id="chart-container">
         <div id="loading-screen">
@@ -641,6 +693,38 @@
             <button class="close-btn" onclick="closeScorecard()">×</button>
         </div>
         <div class="scorecard-body" id="scorecardBody">
+            <!-- NEW: Live Forecast Section (Relocated) -->
+            <div id="forecast-panel">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span class="logo-icon" style="width: 28px; height: 28px; font-size: 0.8rem;">🎯</span>
+                        <h3 style="font-size: 1rem; font-weight: 900; color: var(--white); text-transform: uppercase; letter-spacing: 0.1em;">Next Move Forecast</h3>
+                    </div>
+                    <div id="forecastSetup" style="font-size: 0.75rem; font-weight: 700; color: var(--muted); background: var(--bg); padding: 4px 12px; border-radius: 8px; border: 1px solid var(--border);">
+                        --
+                    </div>
+                </div>
+                
+                <div class="forecast-grid">
+                    <div class="sentiment-gauge">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.7rem; font-weight: 800; text-transform: uppercase;">
+                            <span style="color: var(--green);">Bullish</span>
+                            <span style="color: var(--red);">Bearish</span>
+                        </div>
+                        <div class="gauge-bar">
+                            <div id="gaugeBull" class="gauge-fill gauge-bull" style="width: 50%;"></div>
+                            <div id="gaugeBear" class="gauge-fill gauge-bear" style="width: 50%;"></div>
+                        </div>
+                        <div id="sentimentVerdict" style="text-align: center; font-size: 0.85rem; font-weight: 700; margin-top: 4px;">
+                            NEUTRAL SENTIMENT
+                        </div>
+                    </div>
+                    <div class="forecast-outcomes" id="forecastOutcomes">
+                        <!-- Outcomes injected here -->
+                    </div>
+                </div>
+            </div>
+
             <div class="score-panel">
                 <div class="metric-card">
                     <div class="metric-label">Pattern Reliability</div>
@@ -867,11 +951,83 @@
             document.getElementById('bearCount').innerText = "—";
         }
 
-        // 3. EMA & Structure (if visible)
+        // 3. EMA & Structure & Forecast (if visible)
         if (emaVisible) await fetchEMA(sym, years);
         if (structVisible) await fetchStructure(sym, years);
+        await loadForecast();
 
         chart.timeScale().fitContent();
+    }
+
+    async function loadForecast() {
+        const panel = document.getElementById('forecast-panel');
+        const setupDiv = document.getElementById('forecastSetup');
+        const outcomesDiv = document.getElementById('forecastOutcomes');
+        const gaugeBull = document.getElementById('gaugeBull');
+        const gaugeBear = document.getElementById('gaugeBear');
+        const sentimentVerdict = document.getElementById('sentimentVerdict');
+
+        try {
+            const sym = document.getElementById('symbolInput').value.toUpperCase();
+            const qStr = getQueryString();
+            const res = await fetch(`/api/stocks/${sym}/forecast${qStr}`);
+            const data = await res.json();
+
+            if (data.error || !data.outcomes || data.outcomes.length === 0) {
+                panel.style.display = 'none';
+                return;
+            }
+
+            panel.style.display = 'block';
+            setupDiv.textContent = `Setup: ${data.current_setup} (Last: ${data.last_pattern_date})`;
+
+            // Calculate Aggregate Sentiment
+            let bullWeight = 0;
+            let bearWeight = 0;
+            data.outcomes.forEach(o => {
+                if (o.is_bullish) bullWeight += o.wilson_score;
+                else bearWeight += o.wilson_score;
+            });
+
+            const totalWeight = bullWeight + bearWeight;
+            const bullPct = totalWeight > 0 ? (bullWeight / totalWeight) * 100 : 50;
+            const bearPct = totalWeight > 0 ? (bearWeight / totalWeight) * 100 : 50;
+
+            gaugeBull.style.width = `${bullPct}%`;
+            gaugeBear.style.width = `${bearPct}%`;
+
+            if (bullPct > 60) {
+                sentimentVerdict.textContent = "STRONG BULLISH SENTIMENT";
+                sentimentVerdict.style.color = "var(--green)";
+            } else if (bearPct > 60) {
+                sentimentVerdict.textContent = "STRONG BEARISH SENTIMENT";
+                sentimentVerdict.style.color = "var(--red)";
+            } else {
+                sentimentVerdict.textContent = "NEUTRAL / MIXED SENTIMENT";
+                sentimentVerdict.style.color = "var(--muted)";
+            }
+
+            // Render Outcomes
+            const formatLabel = (l) => l ? l.replace(/_/g, ' ') : 'DIRECT';
+            outcomesDiv.innerHTML = data.outcomes.slice(0, 2).map((o, idx) => `
+                <div class="forecast-item ${idx === 0 ? 'top-pick' : ''}">
+                    <div>
+                        <div style="font-size: 0.65rem; color: var(--muted); font-weight: 800; text-transform: uppercase;">Likely Target ${idx + 1}</div>
+                        <div style="font-size: 0.9rem; font-weight: 800; color: var(--white); margin-top: 2px;">
+                            [${formatLabel(o.path)}] → ${formatLabel(o.target)}
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 1.1rem; font-weight: 900; color: ${o.is_bullish ? 'var(--green)' : 'var(--red)'};">${o.probability}%</div>
+                        <div style="font-size: 0.6rem; font-weight: 700; color: var(--muted); text-transform: uppercase;">Confidence: ${o.wilson_score}%</div>
+                    </div>
+                </div>
+            `).join('');
+
+        } catch (err) {
+            console.error("Forecast load error:", err);
+            panel.style.display = 'none';
+        }
     }
 
     async function toggleEMA() {
@@ -1055,8 +1211,20 @@
                 const ws = c.wilson_score ?? null;
                 const wsColor = ws === null ? 'var(--border)' : ws >= 40 ? 'var(--green)' : ws >= 20 ? 'var(--orange)' : 'var(--red)';
 
+                const formatLabel = (l) => l ? l.replace(/_/g, ' ') : 'DIRECT';
+
                 let content = `<h4>Combo: ${c.pairing}</h4>`;
-                content += `<p>Path: <strong>[${c.path || 'DIRECT'}]</strong> → Target: <strong>${c.target}</strong>.</p>`;
+                content += `<p>Path: <strong>[${formatLabel(c.path)}]</strong> → Target: <strong>${formatLabel(c.target)}</strong>.</p>`;
+                
+                if (c.profit_stats && c.profit_stats.length > 0) {
+                    content += `<div style="margin-top:10px; font-size:0.7rem; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">Profit Predictability Machine:</div>`;
+                    content += `<div style="display:flex; gap:8px; margin-top:4px; flex-wrap:wrap;">`;
+                    c.profit_stats.forEach(ps => {
+                        content += `<span style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px; border:1px solid var(--border)">${ps}</span>`;
+                    });
+                    content += `</div>`;
+                }
+
                 content += `<div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">`;
                 content += `<span class="tag ${c.is_bull ? 'tag-bull' : 'tag-bear'}">PROB: ${displayProb}</span>`;
                 content += `<span class="tag" style="background:var(--border)">MATCHES: ${c.ratio}</span>`;
