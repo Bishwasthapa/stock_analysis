@@ -67,13 +67,16 @@
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            padding: 24px;
-            gap: 24px;
+            padding: 20px;
+            gap: 16px;
             z-index: 100;
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
                         margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             flex-shrink: 0;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
         }
         body.sidebar-collapsed aside {
             transform: translateX(-300px);
@@ -185,7 +188,7 @@
             border: 1px solid var(--border);
             border-radius: 16px;
             padding: 16px;
-            margin-top: auto;
+            margin-top: 10px;
             display: flex;
             flex-direction: column;
             gap: 12px;
@@ -473,6 +476,30 @@
     </div>
 
     <div class="field-group">
+        <div class="field-label">Market</div>
+        <select id="marketSelect" onchange="updateVisibility()" style="width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; color: var(--white); font-size: 0.85rem; outline: none; appearance: none; cursor: pointer;">
+            <option value="nepal">🇳🇵 NEPAL (NEPSE)</option>
+            <option value="intl">🌍 INTERNATIONAL (YAHOO)</option>
+            <option value="crypto">🪙 CRYPTO (BINANCE)</option>
+        </select>
+    </div>
+
+    <div class="field-group">
+        <div class="field-label">Strategy Category</div>
+        <select id="strategySelect" onchange="updateVariants()" style="width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; color: var(--white); font-size: 0.85rem; outline: none; appearance: none; cursor: pointer;">
+            <option value="custom" selected>🛠️ CUSTOM</option>
+            <option value="standard">📏 STANDARD</option>
+        </select>
+    </div>
+
+    <div class="field-group">
+        <div class="field-label">Specific Variant</div>
+        <select id="variantSelect" onchange="updateVisibility()" style="width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; color: var(--white); font-size: 0.85rem; outline: none; appearance: none; cursor: pointer;">
+            <!-- Populated by JS -->
+        </select>
+    </div>
+
+    <div class="field-group">
         <div class="field-label">Market Symbol</div>
         <input type="text" id="symbolInput" placeholder="NICA, SCB, EHPL..." value="NEPSE">
     </div>
@@ -692,26 +719,76 @@
     let structVisible = false;
 
     // ── App Logic ──
+    const STRATEGY_VARIANTS = {
+        standard: [
+            { value: 'standard', label: '📊 RSI/MACD' },
+            { value: 'standard2', label: '📈 EMA/Bollinger' }
+        ],
+        custom: [
+            { value: 'in_out', label: '🏛️ In/Out (Structural)' },
+            { value: 'structural_v2', label: '🛡️ Structural V2' },
+            { value: 'strategy1', label: '🚀 Custom Beta' },
+            { value: 'strategy2', label: '⚡ Fast Scalp' }
+        ]
+    };
+
+    function updateVariants() {
+        const cat = document.getElementById('strategySelect').value;
+        const vSelect = document.getElementById('variantSelect');
+        const variants = STRATEGY_VARIANTS[cat] || [];
+        
+        vSelect.innerHTML = '';
+        variants.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.value;
+            opt.innerText = v.label;
+            vSelect.appendChild(opt);
+        });
+        
+        updateVisibility();
+    }
+
+    // Call once to init
+    updateVariants();
+
+    function getQueryString(years, extra = {}) {
+        const market = document.getElementById('marketSelect').value;
+        const strategy = document.getElementById('variantSelect').value;
+        const thresh = getThresh();
+        const roundParam = getRound() ? 'true' : 'false';
+        
+        let params = new URLSearchParams({ 
+            market, 
+            strategy, 
+            threshold: thresh,
+            round_prices: roundParam
+        });
+        
+        if (years && years != 15) params.append('years', years);
+        for (const [k, v] of Object.entries(extra)) params.append(k, v);
+        return '?' + params.toString();
+    }
+
     async function runPipeline() {
         const sym = document.getElementById('symbolInput').value.toUpperCase();
         let years = document.getElementById('yearsRange').value;
-        if (years == 15) years = ""; // 15 acts as "All Data"
         
         document.getElementById('loading-screen').style.display = 'flex';
         document.getElementById('stockName').innerText = `${sym} (RUNNING...)`;
 
         try {
-            const thresh = getThresh();
-            // Trigger backend analysis
-            const runRes = await fetch(`/api/stocks/${sym}/run${years ? '?years='+years : '?threshold='+thresh}${years ? '&threshold='+thresh : ''}`);
-            if (!runRes.ok) throw new Error("Pipeline failed");
-
-            // Fetch results
-            await loadStock(sym, years);
+            const qStr = getQueryString(years);
+            const runRes = await fetch(`/api/stocks/${sym}/run${qStr}`);
             
+            if (!runRes.ok) {
+                const errData = await runRes.json();
+                throw new Error(errData.detail || "Pipeline failed");
+            }
+
+            await loadStock(sym, years);
         } catch (e) {
             console.error(e);
-            alert("Analysis failed for " + sym);
+            alert(`Analysis failed for ${sym}: ${e.message}`);
         } finally {
             document.getElementById('loading-screen').style.display = 'none';
         }
@@ -719,9 +796,8 @@
 
     async function loadStock(sym, years) {
         document.getElementById('stockName').innerText = sym;
-        const thresh = getThresh();
-        const roundParam = getRound() ? 'true' : 'false';
-        const yParam = (years && years != 15) ? `?years=${years}&threshold=${thresh}&round_prices=${roundParam}` : `?threshold=${thresh}&round_prices=${roundParam}`;
+        const qStr = getQueryString(years);
+        const market = document.getElementById('marketSelect').value;
 
         // Clear old markers immediately so they don't linger during load
         candleSeries.setMarkers([]);
@@ -730,7 +806,7 @@
         document.getElementById('trendBadge').style.display = 'none';
         
         // 1. Candlestick Data
-        const res = await fetch(`/api/stocks/${sym}${yParam}`);
+        const res = await fetch(`/api/stocks/${sym}${qStr}`);
         const ohlcv = await res.json();
         
         const candles = ohlcv.map(d => ({
@@ -747,7 +823,8 @@
         const last = ohlcv[ohlcv.length - 1];
         const prev = ohlcv[ohlcv.length - 2];
         if (last && prev) {
-            document.getElementById('lastPrice').innerText = `Rs. ${last.Close.toFixed(1)}`;
+            const currency = market === 'nepal' ? 'Rs.' : '$';
+            document.getElementById('lastPrice').innerText = `${currency} ${last.Close.toFixed(1)}`;
             const chg = ((last.Close - prev.Close) / prev.Close * 100).toFixed(1);
             const el = document.getElementById('priceChange');
             el.innerText = `${chg > 0 ? '+' : ''}${chg}%`;
@@ -757,7 +834,8 @@
         // 2. Pattern Markers
         if (document.getElementById('markerToggle').checked) {
             try {
-                const pRes = await fetch(`/api/stocks/${sym}/patterns${yParam}`);
+                const qStr = getQueryString(years);
+                const pRes = await fetch(`/api/stocks/${sym}/patterns${qStr}`);
                 const patterns = await pRes.json();
                 
                 // Sort by date ascending (required by LightweightCharts)
@@ -837,26 +915,38 @@
         structInUpSeries = null; structInDownSeries = null; structOutSeries = null;
     }
 
+    async function fetchEMA(sym, years) {
+        const qStr = getQueryString(years);
+        const res = await fetch(`/api/stocks/${sym}/ema${qStr}`);
+        const data = await res.json();
+        
+        if (ema9Series) chart.removeSeries(ema9Series);
+        if (ema18Series) chart.removeSeries(ema18Series);
+        
+        ema9Series = chart.addLineSeries({ color: 'rgba(33, 150, 243, 0.4)', lineWidth: 1, title: 'EMA 9' });
+        ema18Series = chart.addLineSeries({ color: 'rgba(255, 167, 38, 0.4)', lineWidth: 1, title: 'EMA 18' });
+        
+        ema9Series.setData(data.ema_short.map(d => ({ time: d.time, value: d.value })));
+        ema18Series.setData(data.ema_long.map(d => ({ time: d.time, value: d.value })));
+    }
+
     async function fetchStructure(sym, years) {
-        const thresh = getThresh();
-        const yParam = (years && years != 15) ? `?years=${years}&threshold=${thresh}` : `?threshold=${thresh}`;
-        const res = await fetch(`/api/stocks/${sym}/structure${yParam}`);
+        const qStr = getQueryString(years);
+        const res = await fetch(`/api/stocks/${sym}/structure${qStr}`);
+        if (!res.ok) { clearStructure(); return; }
         const data = await res.json();
         
         clearStructure();
         
         // Setup series
-        // IN_UP: Strong Green, Thick
         structInUpSeries = chart.addLineSeries({ 
             color: '#00e676', lineWidth: 4, title: 'STRUCTURAL UPTREND',
             lineType: 0,
         });
-        // IN_DOWN: Strong Red, Thick
         structInDownSeries = chart.addLineSeries({ 
             color: '#ff5252', lineWidth: 4, title: 'STRUCTURAL DOWNTREND',
             lineType: 0,
         });
-        // OUT: Muted Steel/Orange, Dashed
         structOutSeries = chart.addLineSeries({ 
             color: '#ffa726', lineWidth: 2, title: 'TRANSITION / NOISE',
             lineStyle: 2, // Dashed
@@ -870,20 +960,14 @@
             const item1 = { time: p1.date, value: p1.price };
             const item2 = { time: p2.date, value: p2.price };
             
-            // Determine the color of the SEGMENT between p1 and p2
-            // We use the classification of p2 (the target state) to color the path towards it
             if (p2.classification === 'IN') {
-                if (p2.trend_type === 'UPTREND') {
-                    greenData.push(item1, item2);
-                } else {
-                    redData.push(item1, item2);
-                }
+                if (p2.trend_type === 'UPTREND') greenData.push(item1, item2);
+                else redData.push(item1, item2);
             } else {
                 steelData.push(item1, item2);
             }
         }
 
-        // Helper to remove duplicates and sort by time (Lightweight Charts requirement)
         const clean = (arr) => {
             const seen = new Set();
             return arr.filter(o => {
@@ -892,38 +976,22 @@
                 return true;
             }).sort((a,b) => a.time.localeCompare(b.time));
         };
-
-        // Note: For bridging segments, we actually need to allow duplicates in time IF they are in different series
-        // but within one series points must be unique in time. 
-        // Our segment-pushing logic might push the same point multiple times if it's a shared vertex.
         
         structInUpSeries.setData(clean(greenData));
         structInDownSeries.setData(clean(redData));
         structOutSeries.setData(clean(steelData));
     }
 
-    async function fetchEMA(sym, years) {
-        const thresh = getThresh();
-        const yParam = (years && years != 15) ? `?years=${years}&threshold=${thresh}` : `?threshold=${thresh}`;
-        const res = await fetch(`/api/stocks/${sym}/ema${yParam}`);
-        const data = await res.json();
-        
-        if (!ema9Series) {
-            ema9Series = chart.addLineSeries({ color: '#2196f3', lineWidth: 1.5, title: 'EMA 9' });
-            ema18Series = chart.addLineSeries({ color: '#ffa726', lineWidth: 1.5, title: 'EMA 18' });
-        }
-        ema9Series.setData(data.ema_short);
-        ema18Series.setData(data.ema_long);
-    }
 
     // ── Visualization Modal ──
     function openVisualization() {
         const sym = document.getElementById('symbolInput').value.toUpperCase();
+        const qStr = getQueryString(null, { t: Date.now() });
         document.getElementById('vizSymbol').innerText = sym;
         const img = document.getElementById('vizImage');
         img.src = ""; // Clear old image
         img.classList.remove('zoomed'); // Reset zoom state
-        img.src = `/api/stocks/${sym}/viz?t=${Date.now()}`;
+        img.src = `/api/stocks/${sym}/viz${qStr}`;
         document.getElementById('viz-overlay').style.display = 'flex';
         document.body.style.overflow = 'hidden';
     }
@@ -952,10 +1020,11 @@
         
         list.innerHTML = '<div style="color: var(--muted); padding: 20px;">FETCHING STRATEGY INSIGHTS...</div>';
         summary.innerText = "Fetching report...";
-
+        
         try {
+            const qStr = getQueryString();
             // Fetch human-readable text
-            const txtRes = await fetch(`/api/stocks/${sym}/strategy_txt`);
+            const txtRes = await fetch(`/api/stocks/${sym}/strategy_txt${qStr}`);
             if (txtRes.ok) {
                 const txtData = await txtRes.json();
                 summary.innerHTML = txtData.content
@@ -964,12 +1033,12 @@
             }
 
             // Fetch Parsed Strategy Combos
-            const comboRes = await fetch(`/api/stocks/${sym}/strategy_combos`);
+            const comboRes = await fetch(`/api/stocks/${sym}/strategy_combos${qStr}`);
             if (!comboRes.ok) throw new Error("No combo data");
             const combos = await comboRes.json();
 
-            // Fetch Stability/Strength from recommendations (now returns {health, recommendations})
-            const recRes = await fetch(`/api/stocks/${sym}/recommendations`);
+            // Fetch Stability/Strength from recommendations
+            const recRes = await fetch(`/api/stocks/${sym}/recommendations${qStr}`);
             const recData = recRes.ok ? await recRes.json() : { health: "MODERATE", recommendations: [] };
             const recs = recData.recommendations;
             const overallHealth = recData.health;

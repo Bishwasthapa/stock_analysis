@@ -403,12 +403,16 @@ if __name__ == '__main__':
         default=7,
         help="Used when --refresh auto; refresh if local data older than this (default: 7)",
     )
+    parser.add_argument("--market", default="nepal", help="Market name for path organization")
+    parser.add_argument("--strategy", default="in_out", help="Strategy identifier (e.g. in_out, structural_v2, strategy1)")
+    parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
 
     symbol = args.symbol.upper()
     short_span = args.ema_short
     long_span = args.ema_long
-    output_dir = f'results/nepal/{symbol}/in_out'
+    strategy = args.strategy.lower()
+    output_dir = args.output_dir or f'results/{args.market.lower()}/{symbol}/{strategy}'
     
     try:
         print(f"Loading {symbol}...")

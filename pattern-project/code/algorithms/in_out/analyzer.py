@@ -861,9 +861,11 @@ def main() -> None:
         description="Analyze repeating 2-token pattern transitions from in/out labels."
     )
     parser.add_argument("symbol", help="Stock symbol, e.g. NICA")
+    parser.add_argument("--market", default="nepal", help="Market name for path organization")
+    parser.add_argument("--strategy", default="in_out", help="Strategy variant (e.g. in_out, structural_v2)")
     parser.add_argument(
         "--input-csv",
-        help="Path to labeled pattern CSV (default: results/nepal/<symbol>/in_out/csv/in_out_pattern_9_18.csv)",
+        help="Path to labeled pattern CSV (default: constructed from market/symbol/strategy)",
     )
     parser.add_argument(
         "--output-dir",
@@ -905,7 +907,9 @@ def main() -> None:
     args = parser.parse_args()
 
     symbol = args.symbol.upper()
-    default_input = Path(f"results/nepal/{symbol}/in_out/csv/in_out_pattern_9_18.csv")
+    market = args.market.lower()
+    strategy = args.strategy.lower()
+    default_input = Path(f"results/{market}/{symbol}/{strategy}/csv/in_out_pattern_9_18.csv")
     input_csv = Path(args.input_csv) if args.input_csv else default_input
     output_dir = (
         Path(args.output_dir)

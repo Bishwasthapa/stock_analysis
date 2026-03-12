@@ -14,6 +14,8 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
+from code.algorithms.in_out.labeler import PatternLabeler, LabelResult
+
 
 
 @dataclass
@@ -27,6 +29,14 @@ class SwingPoint:
     
     def __repr__(self):
         return f"SwingPoint(idx={self.index}, price={self.price}, type={self.type})"
+
+# Plotting constants
+COLOR = {
+    'IN_UP':   '#00e676',  # neon green
+    'IN_DOWN': '#29b6f6',  # bright sky blue
+    'OUT_UP':  '#ffa726',  # vivid amber
+    'OUT_DOWN':'#ef5350',  # bright red
+}
 
 
 class DataLoader:
@@ -230,77 +240,15 @@ class PatternClassifier:
                  trends: Dict[int, Tuple[str, int]],
                  sequences_list: List[Tuple[int, List[int], str]]) -> Dict[int, Tuple[str, Optional[int], str, str]]:
         """
-        Classify each swing into directional IN/OUT labels.
-        
-        point_label values:
-          - IN_UP / IN_DOWN: role 1,2,3 in an up/down valid trend
-          - OUT_UP / OUT_DOWN: role 0 of an up/down valid trend
-          - unlabeled: not part of any valid 0-1-2-3 trend
+        Classify each swing into directional IN/OUT labels using the PatternLabeler service.
         """
+        label_map = PatternLabeler.labels_from_sequences(len(swings), sequences_list)
+        
+        # Convert LabelResult objects to the legacy tuple format for backward compatibility
         classification: Dict[int, Tuple[str, Optional[int], str, str]] = {}
-
-        # Build role map per pattern and detect whether each pattern start (role 0) is IN or OUT.
-        # Rule: start (0) is IN if it is also 1/2/3 of any other valid pattern.
-        start_in: Dict[int, bool] = {}
-        start_trend: Dict[int, str] = {}
-        pattern_roles: List[Dict[int, int]] = []
-        pattern_trends: List[str] = []
-        for seq_idx, seq_indices, trend_type in sequences_list:
-            role_map = {idx: role for role, idx in enumerate(seq_indices)}
-            pattern_roles.append(role_map)
-            pattern_trends.append(trend_type)
-            start_trend[seq_indices[0]] = trend_type
-
-        # Index swing membership in patterns
-        swing_to_patterns: Dict[int, List[Tuple[int, int]]] = {}
-        for p_idx, role_map in enumerate(pattern_roles):
-            for idx, role in role_map.items():
-                swing_to_patterns.setdefault(idx, []).append((p_idx, role))
-
-        # Determine whether each pattern start is IN (overlaps another pattern's 1/2/3)
-        for p_idx, role_map in enumerate(pattern_roles):
-            start_idx = [k for k, v in role_map.items() if v == 0]
-            if not start_idx:
-                continue
-            s_idx = start_idx[0]
-            overlaps = swing_to_patterns.get(s_idx, [])
-            start_in[p_idx] = any(role in (1, 2, 3) and other_idx != p_idx for other_idx, role in overlaps)
-
-        # Assign labels based on pattern start rule:
-        # - role 0 is OUT unless it overlaps another pattern's 1/2/3
-        # - roles 1/2/3 are always IN (trend direction)
-        for swing in swings:
-            memberships = swing_to_patterns.get(swing.index, [])
-            if not memberships:
-                continue
-
-            # Find if this swing acts as role 0 in ANY pattern
-            role_0_patterns = [p for p, role in memberships if role == 0]
+        for s_idx, res in label_map.items():
+            classification[s_idx] = (res.cls, res.role, res.trend_type, res.point_label)
             
-            if role_0_patterns:
-                # Prioritize the pattern where it is role 0.
-                # If there are multiple, just pick the first one.
-                chosen_p = role_0_patterns[-1]
-                role = 0
-            else:
-                # If not role 0 anywhere, prioritize IN patterns
-                in_patterns = [p for p, _ in memberships if start_in.get(p, False)]
-                chosen_p = in_patterns[0] if in_patterns else memberships[0][0]
-                role = dict(memberships).get(chosen_p, memberships[0][1])
-
-            trend_type = pattern_trends[chosen_p]
-
-            if role == 0 and not start_in.get(chosen_p, False):
-                if trend_type == 'UPTREND':
-                    classification[swing.index] = ('OUT', role, trend_type, 'OUT_UP')
-                else:
-                    classification[swing.index] = ('OUT', role, trend_type, 'OUT_DOWN')
-            else:
-                if trend_type == 'UPTREND':
-                    classification[swing.index] = ('IN', role, trend_type, 'IN_UP')
-                else:
-                    classification[swing.index] = ('IN', role, trend_type, 'IN_DOWN')
-
         return classification
 
 
@@ -391,65 +339,33 @@ class ResultExporter:
         def _gp(idx): s = swing_by_index.get(idx); return s.price if s else float('nan')
         def _gt(idx): s = swing_by_index.get(idx); return s.type.upper() if s else ''
 
-        # High-contrast neon palette on dark background
-        COLOR = {
-            'IN_UP':   '#00e676',  # neon green
-            'IN_DOWN': '#29b6f6',  # bright sky blue
-            'OUT_UP':  '#ffa726',  # vivid amber
-            'OUT_DOWN':'#ef5350',  # bright red
-        }
-
-        # Build per-swing: (primary_label, all_roles_per_label)
-        # multi_roles[swap_index] -> list of (role_num, point_label)
-        multi_roles: dict = {}
-        for i in range(len(swing_idx_list) - 3):
-            i0,i1,i2,i3 = swing_idx_list[i],swing_idx_list[i+1],swing_idx_list[i+2],swing_idx_list[i+3]
-            p0r,p1r,p2r,p3r = _gp(i0),_gp(i1),_gp(i2),_gp(i3)
-            t0r,t1r,t2r,t3r = _gt(i0),_gt(i1),_gt(i2),_gt(i3)
-            if any(_math.isnan(px) for px in [p0r,p1r,p2r,p3r]): continue
-            is_up = t0r=='LOW' and t1r=='HIGH' and t2r=='LOW' and t3r=='HIGH' and p2r>p0r and p3r>p1r
-            is_dn = t0r=='HIGH' and t1r=='LOW' and t2r=='HIGH' and t3r=='LOW' and p2r<p0r and p3r<p1r
-            if not (is_up or is_dn): continue
-            for rn, idx in enumerate([i0,i1,i2,i3]):
-                if rn == 0:
-                    c0 = classification.get(idx, ('',))[0]
-                    lbl = ('IN' if c0=='IN' else 'OUT') + ('_UP' if is_up else '_DOWN')
-                else:
-                    lbl = 'IN_UP' if is_up else 'IN_DOWN'
-                entry = (rn, lbl)
-                if entry not in multi_roles.get(idx, []):
-                    multi_roles.setdefault(idx, []).append(entry)
-
         # Thin zigzag base
         ax.plot(dates, prices, color='#95a5a6', linewidth=1.5, alpha=0.5, zorder=1)
 
         # Dots + role badges
-        seen_dot: dict = {}  # idx -> list of labels drawn (to avoid identical repeats)
         for swing in swings:
             x = date_by_index.get(swing.index, pd.to_datetime(swing.date))
-            roles = multi_roles.get(swing.index, [])
-            if not roles:
+            
+            # Use classification dict for labels and colors
+            if swing.index not in classification:
                 # unlabeled point
                 ax.scatter(x, swing.price, color='#bdc3c7', s=60, zorder=3, alpha=0.5)
                 continue
 
-            # Draw a dot per unique label at this point
-            drawn_lbls = []
-            for (rn, lbl) in roles:
-                color = COLOR.get(lbl, '#7f8c8d')
-                if lbl not in drawn_lbls:
-                    ax.scatter(x, swing.price, color=color, s=180, zorder=4,
-                               alpha=0.6, edgecolors='white', linewidth=1)
-                    drawn_lbls.append(lbl)
+            cls, role, trend_type, label = classification[swing.index]
+            color = COLOR.get(label, '#7f8c8d')
+            
+            # Draw dot
+            ax.scatter(x, swing.price, color=color, s=180, zorder=4,
+                       alpha=0.6, edgecolors='white', linewidth=1)
 
-            # Single role badge — just the primary (first) role at this point
-            rn, lbl = roles[0]
-            color = COLOR.get(lbl, '#7f8c8d')
+            # Draw role badge
             y = swing.price + price_range * 0.05
-            ax.text(x, y, str(rn), fontsize=7.5, fontweight='bold',
+            ax.text(x, y, str(role), fontsize=7.5, fontweight='bold',
                     ha='center', va='bottom', color='white', zorder=6,
                     bbox=dict(boxstyle='round,pad=0.18', facecolor=color,
                               alpha=0.88, edgecolor='none'))
+
 
         # Date labels: 45° rotated, alternating offset below dot
         for idx_e, swing in enumerate(swings):
@@ -542,6 +458,8 @@ if __name__ == '__main__':
 
     _parser = _ap.ArgumentParser(description="Trend-based pattern detector.")
     _parser.add_argument("symbol")
+    _parser.add_argument("--market", default="nepal", help="Market name for path organization")
+    _parser.add_argument("--strategy", default="in_out", help="Strategy variant (e.g. in_out, structural_v2)")
     _parser.add_argument("--zigzag-csv", default=None)
     _parser.add_argument("--output-csv", default=None)
     _parser.add_argument("--years", type=int, default=None,
@@ -549,8 +467,10 @@ if __name__ == '__main__':
     _args = _parser.parse_args()
 
     _symbol = _args.symbol.upper()
-    _zigzag_csv = _args.zigzag_csv or f'results/nepal/{_symbol}/in_out/csv/highs_lows_pattern_9_18.csv'
-    _output_csv = _args.output_csv or f'results/nepal/{_symbol}/in_out/csv/in_out_pattern_9_18.csv'
+    _market = _args.market.lower()
+    _strategy = _args.strategy.lower()
+    _zigzag_csv = _args.zigzag_csv or f'results/{_market}/{_symbol}/{_strategy}/csv/highs_lows_pattern_9_18.csv'
+    _output_csv = _args.output_csv or f'results/{_market}/{_symbol}/{_strategy}/csv/in_out_pattern_9_18.csv'
 
     _cutoff = None
     if _args.years:

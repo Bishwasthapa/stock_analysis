@@ -44,6 +44,11 @@ class PatternPoint(BaseModel):
     type: str  # 'high' or 'low'
     cross_type: str
 
+# Result Path Helper
+def get_result_dir(market: str, symbol: str, strategy: str) -> Path:
+    project_root = Path(__file__).resolve().parent.parent.parent
+    return project_root / "results" / market.lower() / symbol.upper() / strategy.lower()
+
 def _round_ohlc(df: pd.DataFrame) -> pd.DataFrame:
     """Round OHLC price columns to 1 decimal place for consistent analysis."""
     for col in ('Open', 'High', 'Low', 'Close'):
@@ -57,9 +62,10 @@ def read_root():
     return FileResponse(os.path.join(static_path, "index.html"))
 
 @app.get("/api/stocks/{symbol}", response_model=List[StockDataPoint])
-def get_stock_data(symbol: str, years: Optional[int] = Query(None), round_prices: bool = Query(True)):
+def get_stock_data(symbol: str, market: str = Query("nepal"), years: Optional[int] = Query(None), round_prices: bool = Query(True)):
     symbol = symbol.upper()
     try:
+        # TODO: Add Market Factory here later (e.g. YahooFinanceService for 'intl')
         service = NepalStockService()
         df = service.load_data(symbol)
         
@@ -88,7 +94,7 @@ def get_stock_data(symbol: str, years: Optional[int] = Query(None), round_prices
         raise HTTPException(status_code=404, detail=str(e))
 
 @app.get("/api/stocks/{symbol}/patterns", response_model=List[PatternPoint])
-def get_stock_patterns(symbol: str, years: Optional[int] = Query(None), threshold: float = Query(0.0), round_prices: bool = Query(True)):
+def get_stock_patterns(symbol: str, market: str = Query("nepal"), years: Optional[int] = Query(None), threshold: float = Query(0.0), round_prices: bool = Query(True)):
     symbol = symbol.upper()
     try:
         service = NepalStockService()
@@ -117,6 +123,7 @@ def get_stock_patterns(symbol: str, years: Optional[int] = Query(None), threshol
 @app.get("/api/stocks/{symbol}/ema")
 def get_ema_data(
     symbol: str,
+    market: str = Query("nepal"),
     years: Optional[int] = Query(None),
     short: int = Query(9),
     long: int = Query(18),
@@ -152,14 +159,26 @@ def get_ema_data(
 
 
 @app.get("/api/stocks/{symbol}/run")
-def run_pipeline(symbol: str, years: Optional[int] = Query(None), threshold: float = Query(0.0)):
-    """Triggers the full nepal_pipeline.py background analysis."""
+def run_pipeline(
+    symbol: str, 
+    market: str = Query("nepal"), 
+    strategy: str = Query("in_out"),
+    years: Optional[int] = Query(None), 
+    threshold: float = Query(0.0)
+):
+    """Triggers the full global pipeline background analysis."""
     symbol = symbol.upper()
     project_root = Path(__file__).resolve().parent.parent.parent
-    pipeline_script = project_root / "code/pipelines/nepal_pipeline.py"
+    # Use the new global pipeline
+    pipeline_script = project_root / "code/pipelines/global_pipeline.py"
     python_exe = sys.executable
 
-    cmd = [python_exe, str(pipeline_script), symbol, "--threshold", str(threshold)]
+    cmd = [
+        python_exe, str(pipeline_script), symbol, 
+        "--market", market,
+        "--strategy", strategy,
+        "--threshold", str(threshold)
+    ]
     if years:
         cmd += ["--years", str(years)]
 
@@ -172,16 +191,18 @@ def run_pipeline(symbol: str, years: Optional[int] = Query(None), threshold: flo
         result = subprocess.run(cmd, env=env, capture_output=True, text=True, check=True)
         return {"status": "success", "message": f"Pipeline complete for {symbol}", "output": result.stdout}
     except subprocess.CalledProcessError as e:
-        raise HTTPException(status_code=500, detail=f"Pipeline failed: {e.stderr}")
+        error_msg = f"Pipeline failed: {e.stderr or e.stdout}"
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 @app.get("/api/stocks/{symbol}/report")
-def get_strategy_report(symbol: str, years: Optional[int] = Query(None)):
-    """Returns the latest IN/OUT strategy report from saved CSVs."""
+def get_stock_report(symbol: str, market: str = Query("nepal"), strategy: str = Query("in_out"), years: Optional[int] = Query(None)):
+    """Returns the latest strategy report from saved CSVs."""
     symbol = symbol.upper()
-    project_root = Path(__file__).resolve().parent.parent.parent
-    report_path  = project_root / f"results/nepal/{symbol}/in_out/csv/in_out_pattern_9_18.csv"
-    forecast_path = project_root / f"results/nepal/{symbol}/in_out/csv/forecast_next_signal.csv"
+    base_dir = get_result_dir(market, symbol, strategy)
+    # The detector currently saves everything as in_out_pattern_9_18.csv in the strategy folder
+    report_path = base_dir / "csv" / "in_out_pattern_9_18.csv"
+    forecast_path = base_dir / "csv" / "forecast_next_signal.csv"
 
     result = {}
 
@@ -206,15 +227,12 @@ def get_strategy_report(symbol: str, years: Optional[int] = Query(None)):
 
 
 @app.get("/api/stocks/{symbol}/recommendations")
-def get_recommendations(symbol: str):
-    """Provides structured advice and reliability scores for the dashboard.
-    Enriched with entropy-based health metrics for the overall stock.
-    """
+def get_recommendations(symbol: str, market: str = Query("nepal"), strategy: str = Query("in_out")):
+    """Provides structured advice and reliability scores for the dashboard."""
     symbol = symbol.upper()
-    project_root = Path(__file__).resolve().parent.parent.parent
-    base_path = project_root / f"results/nepal/{symbol}/in_out/csv"
-    rec_path = base_path / "strategy_recommendations.csv"
-    stats_path = base_path / "stats_context_summary.csv"
+    base_dir = get_result_dir(market, symbol, strategy) / "csv"
+    rec_path = base_dir / "strategy_recommendations.csv"
+    stats_path = base_dir / "stats_context_summary.csv"
 
     if not os.path.exists(rec_path):
         raise HTTPException(status_code=404, detail=f"No recommendations found for {symbol}.")
@@ -251,11 +269,10 @@ def get_recommendations(symbol: str):
 
 
 @app.get("/api/stocks/{symbol}/strategy_txt")
-def get_strategy_txt(symbol: str):
-    """Returns the human-readable Final_strategy_9_18.txt report."""
+def get_strategy_txt(symbol: str, market: str = Query("nepal"), strategy: str = Query("in_out")):
+    """Returns the human-readable Final_strategy report."""
     symbol = symbol.upper()
-    project_root = Path(__file__).resolve().parent.parent.parent
-    txt_path = project_root / f"results/nepal/{symbol}/in_out/txt/Final_strategy_9_18.txt"
+    txt_path = get_result_dir(market, symbol, strategy) / "txt" / "Final_strategy_9_18.txt"
 
     if not os.path.exists(txt_path):
         raise HTTPException(status_code=404, detail=f"Strategic text report not found for {symbol}.")
@@ -342,11 +359,10 @@ def parse_strategy_text(content: str) -> list[dict]:
 
 
 @app.get("/api/stocks/{symbol}/strategy_combos")
-def get_strategy_combos(symbol: str):
-    """Returns parsed Double Combination results, sorted by Wilson Score (most reliable first)."""
+def get_strategy_combos(symbol: str, market: str = Query("nepal"), strategy: str = Query("in_out")):
+    """Returns parsed Double Combination results, sorted by Wilson Score (reliable first)."""
     symbol = symbol.upper()
-    project_root = Path(__file__).resolve().parent.parent.parent
-    txt_path = project_root / f"results/nepal/{symbol}/in_out/txt/Final_strategy_9_18.txt"
+    txt_path = get_result_dir(market, symbol, strategy) / "txt" / "Final_strategy_9_18.txt"
 
     if not os.path.exists(txt_path):
         raise HTTPException(status_code=404, detail=f"Strategic text report not found for {symbol}.")
@@ -363,11 +379,10 @@ def get_strategy_combos(symbol: str):
 
 
 @app.get("/api/stocks/{symbol}/structure")
-def get_structure_data(symbol: str, years: Optional[int] = Query(None)):
+def get_structure_data(symbol: str, market: str = Query("nepal"), strategy: str = Query("in_out"), years: Optional[int] = Query(None)):
     """Returns the categorized in/out pattern points for zigzag mapping."""
     symbol = symbol.upper()
-    project_root = Path(__file__).resolve().parent.parent.parent
-    csv_path = project_root / f"results/nepal/{symbol}/in_out/csv/in_out_pattern_9_18.csv"
+    csv_path = get_result_dir(market, symbol, strategy) / "csv" / "in_out_pattern_9_18.csv"
 
     if not os.path.exists(csv_path):
         raise HTTPException(status_code=404, detail=f"Structure data not found for {symbol}.")
@@ -388,11 +403,10 @@ def get_structure_data(symbol: str, years: Optional[int] = Query(None)):
 
 
 @app.get("/api/stocks/{symbol}/viz")
-def get_visualization(symbol: str):
-    """Serves the static in_out_pattern_9_18_visualization.png image."""
+def get_visualization(symbol: str, market: str = Query("nepal"), strategy: str = Query("in_out")):
+    """Serves the static pattern visualization image."""
     symbol = symbol.upper()
-    project_root = Path(__file__).resolve().parent.parent.parent
-    viz_path = project_root / f"results/nepal/{symbol}/in_out/png/in_out_pattern_9_18_visualization.png"
+    viz_path = get_result_dir(market, symbol, strategy) / "png" / f"{strategy}_pattern_9_18_visualization.png"
 
     if not os.path.exists(viz_path):
         raise HTTPException(status_code=404, detail=f"Visualization not found for {symbol}.")
