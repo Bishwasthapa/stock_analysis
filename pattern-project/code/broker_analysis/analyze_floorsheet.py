@@ -226,36 +226,94 @@ def detect_dominance(broker_positions):
 def find_existing_report(reports_dir, market_date, mode, side, brokers, limit, turnover, aggregated, ignore_self):
     """
     Scans the reports directory for an existing report with identical parameters.
-    Returns the file content if found, else None.
+    'brokers' can be a list of IDs or an integer (count) for discovery-mode matching.
+    Returns (filepath, content) if found, else (None, None).
     """
     if not os.path.exists(reports_dir):
-        return None
+        return None, None
         
     mode_label = mode.upper()
-    brokers_str = str(sorted(brokers))
     settings_line = f"Settings: Side={side.capitalize()}, Limit={limit}, Aggregated={aggregated}, IgnoreSelfTrades={ignore_self}, TurnoverMatch={turnover}"
     
     # Matching pattern: report-MODE-DATE_*.txt
-    prefix = f"report-{mode_label}-{market_date}_"
+    prefix = f"report-{mode_label}-"
+    if market_date:
+        prefix += f"{market_date}_"
+        
     suffix = f"_{side}.txt"
     
-    for filename in os.listdir(reports_dir):
-        if filename.startswith(prefix) and filename.endswith(suffix):
-            filepath = os.path.join(reports_dir, filename)
-            try:
-                with open(filepath, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    # Check for parameter parity in the file content
-                    if f"Target Brokers: {brokers_str}" in content and settings_line in content:
-                        # Found an exact match! Update its access/modified time so it's picked as "latest"
-                        try:
-                            os.utime(filepath, None)
-                        except:
-                            pass
-                        return filepath, content
-            except:
-                continue
+    import re
+    
+    # Get files sorted by modified time (newest first)
+    try:
+        files = [f for f in os.listdir(reports_dir) if f.startswith(f"report-{mode_label}-") and f.endswith(suffix)]
+        files.sort(key=lambda x: os.path.getmtime(os.path.join(reports_dir, x)), reverse=True)
+    except:
+        return None, None
+    
+    for filename in files:
+        if market_date and not filename.startswith(f"report-{mode_label}-{market_date}_"):
+            continue
+            
+        filepath = os.path.join(reports_dir, filename)
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                header = f.read(2000) # Only read first 2KB for speed
+                
+                # Check for settings parity first
+                if settings_line not in header:
+                    continue
+                
+                # Check for broker parity
+                broker_match = re.search(r"Target Brokers: \[(.*?)\]", header)
+                if not broker_match:
+                    continue
+                
+                found_ids_raw = [x.strip() for x in broker_match.group(1).split(",") if x.strip()]
+                found_ids = [int(x) for x in found_ids_raw if x.isdigit()]
+                
+                match_found = False
+                if isinstance(brokers, list):
+                    if sorted(found_ids) == sorted(brokers):
+                        match_found = True
+                elif isinstance(brokers, int):
+                    if len(found_ids) == brokers:
+                        match_found = True
+                
+                if match_found:
+                    full_content = header if len(header) < 2000 else None
+                    if full_content is None:
+                        f.seek(0)
+                        full_content = f.read()
+                        
+                    try:
+                        os.utime(filepath, None) # Update modified time
+                    except:
+                        pass
+                    return filepath, full_content
+        except:
+            continue
     return None, None
+
+def get_latest_market_date_from_reports(reports_dir):
+    """
+    Tries to infer the latest market date by looking at existing filenames.
+    """
+    if not os.path.exists(reports_dir):
+        return None
+    files = [f for f in os.listdir(reports_dir) if f.startswith("report-")]
+    if not files:
+        return None
+    # Filenames are like report-MODE-YYYY-MM-DD_...
+    dates = []
+    import re
+    for f in files:
+        match = re.search(r'(\d{4}-\d{2}-\d{2})', f)
+        if match:
+            dates.append(match.group(1))
+    if not dates:
+        return None
+    return sorted(dates, reverse=True)[0]
 
 def fetch_with_retries(url, headers, payload=None, params=None, method="POST", max_retries=3):
     """
@@ -571,14 +629,45 @@ def main():
     elif def_brokers:
         broker_source = "Config Specific"
         broker_list = def_brokers if isinstance(def_brokers, list) else [def_brokers]
-    
+
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    reports_dir = os.path.join(project_root, "results", "broker_analysis")
+    if not os.path.exists(reports_dir):
+        os.makedirs(reports_dir)
+        
+    # --- Smart Scan Skipping (Optimistic) ---
+    # We can check for a report immediately if we have enough info
+    search_date = discovery_date or get_latest_market_date_from_reports(reports_dir)
+    if search_date:
+        # If broker_list is empty, we search by count (args.num_brokers)
+        search_target = broker_list if broker_list else args.num_brokers
+        existing_file, existing_content = find_existing_report(
+            reports_dir, search_date, args.mode, side, search_target, 
+            args.limit, args.turnover, args.add, not args.self_trades
+        )
+        if existing_file:
+            print(f"\n[INFO] Identical report found: {os.path.basename(existing_file)}")
+            print(f"       Configuration matches exactly. Displaying existing data...\n")
+            print("-" * 50)
+            print(existing_content)
+            print("-" * 50)
+            return
+
+    # If the list is still empty, we must scrape.
     if not broker_list:
         discovered_details, market_date = get_top_brokers_from_sharesansar(args.num_brokers, side, discovery_date)
         broker_list = [b["id"] for b in discovered_details]
+        
+        # Check cache again after scraping ONLY market_date (if we still need to fetch details)
+        # But wait, if get_top_brokers_from_sharesansar ran, it already scraped.
+        # We want to check cache BEFORE that if possible.
+        # However, Top N brokers change every day, so we need the date.
     else:
         # even if we have specific brokers, let's try to detect the date if not provided
         if not discovery_date:
             discovered_details, market_date = get_top_brokers_from_sharesansar(1, side, None)
+        else:
+            market_date = discovery_date
 
     if not broker_list or not market_date:
         print(f"\n[ERR] Broker/Date Discovery Failed")
@@ -590,19 +679,13 @@ def main():
     timestamp = datetime.now().strftime("%H%M%S")
     mode_label = args.mode.upper()
     
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    reports_dir = os.path.join(project_root, "results", "broker_analysis")
-    if not os.path.exists(reports_dir):
-        os.makedirs(reports_dir)
-    
     log_file_name = f"report-{mode_label}-{report_date}_{timestamp}_{side}.txt"
     log_file = os.path.join(reports_dir, log_file_name)
     
-    # --- Smart Scan Skipping ---
-    # Check if we already have this exact report for today
+    # --- Smart Scan Skipping (Final Check) ---
     existing_file, existing_content = find_existing_report(
         reports_dir, market_date, args.mode, side, broker_list, 
-        args.limit, args.turnover, args.add, def_ignore_self if not args.self_trades else False
+        args.limit, args.turnover, args.add, not args.self_trades
     )
     
     if existing_file:
