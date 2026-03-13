@@ -39,6 +39,7 @@ def main() -> None:
     parser.add_argument("--max-stale-days", type=int, default=0)
     parser.add_argument("--years", type=int, default=None,
                         help="Limit analysis to last N years of data (e.g. 5). Default: all data.")
+    parser.add_argument("--show-roles", action="store_true", help="Show pattern role labels (0, 1, 2, 3)")
     args = parser.parse_args()
 
     symbol = args.symbol.upper()
@@ -72,6 +73,8 @@ def main() -> None:
         "--market", market,
         "--strategy", strategy
     ]
+    if args.show_roles:
+        detector_cmd += ["--show-roles"]
     
     # 3. Transition Pattern Analysis
     analyzer_cmd = [
