@@ -15,6 +15,8 @@ from typing import List, Optional
 from pydantic import BaseModel
 from code.data_fetchers.nepal import NepalStockService
 from code.algorithms.ema_viz import calculate_ema_cross, extract_zigzag_points
+import glob
+import subprocess
 
 app = FastAPI(title="Nepal Stock Pattern API")
 
@@ -444,6 +446,103 @@ def get_stock_forecast(symbol: str, market: str = Query("nepal"), strategy: str 
             return json.load(f)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Intelligence Section (Brokerage Analysis) ---
+
+@app.post("/api/intelligence/broker-analysis")
+def trigger_broker_analysis(
+    side: str = Query("buyer"), 
+    num_brokers: int = Query(5), 
+    num_stocks: int = Query(5),
+    turnover: int = Query(30),
+    date: str = Query(None)
+):
+    """Triggers the Brokerage Intelligence analysis script with dynamic settings."""
+    project_root = Path(__file__).resolve().parent.parent.parent
+    runner_script = project_root / "run_broker_analysis.sh"
+    
+    # Pass all dynamic parameters to analyze_floorsheet.py
+    cmd = [
+        str(runner_script), "analyze_floorsheet.py", 
+        f"--num-brokers={num_brokers}",
+        f"--limit={num_stocks}",
+        f"--turnover={turnover}"
+    ]
+    if side == "seller":
+        cmd.append("--seller")
+    else:
+        cmd.append("--buyer")
+        
+    if date:
+        cmd.append(f"--discovery-date={date}")
+
+    try:
+        # Run and wait for completion (it takes ~10-20s for scraping)
+        env = os.environ.copy()
+        # Use /bin/bash explicitly to ensure POSIX compliance with '.' command in the runner
+        result = subprocess.run(["/bin/bash"] + cmd, env=env, capture_output=True, text=True, check=True, cwd=str(project_root))
+        
+        return {
+            "status": "success", 
+            "message": "Brokerage Analysis Complete",
+            "output_preview": result.stdout[-500:] # Last 500 chars
+        }
+    except subprocess.CalledProcessError as e:
+        error_output = e.stderr or e.stdout
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {error_output}")
+
+
+@app.get("/api/intelligence/latest-report")
+def get_latest_broker_report(date: str = Query(None)):
+    """Retrieves the content of the most recent brokerage analysis report, optionally filtered by date."""
+    project_root = Path(__file__).resolve().parent.parent.parent
+    reports_dir = project_root / "results" / "broker_analysis"
+    
+    if not reports_dir.exists():
+         raise HTTPException(status_code=404, detail="No reports directory found.")
+         
+    # Find files. If date is provided, filter by report-{date}_*.txt
+    pattern = f"report-{date}_*.txt" if date else "report-*.txt"
+    report_files = glob.glob(str(reports_dir / pattern))
+    
+    if not report_files:
+        raise HTTPException(status_code=404, detail=f"No broker reports found {'for date ' + date if date else ''}.")
+        
+    latest_report = max(report_files, key=os.path.getmtime)
+    
+    try:
+        with open(latest_report, "r") as f:
+            return {
+                "filename": os.path.basename(latest_report),
+                "content": f.read()
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not read report: {str(e)}")
+
+
+@app.get("/api/intelligence/reports")
+def list_broker_reports():
+    """Returns a list of all available brokerage reports."""
+    project_root = Path(__file__).resolve().parent.parent.parent
+    reports_dir = project_root / "results" / "broker_analysis"
+    
+    if not reports_dir.exists():
+        return []
+        
+    report_files = glob.glob(str(reports_dir / "report-*.txt"))
+    reports = []
+    for f in report_files:
+        reports.append({
+            "name": os.path.basename(f),
+            "created_at": os.path.getmtime(f)
+        })
+    
+    # Sort by creation time descending
+    reports.sort(key=lambda x: x["created_at"], reverse=True)
+    return reports
+
+
 
 
 if __name__ == "__main__":

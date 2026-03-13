@@ -1,0 +1,69 @@
+"DEVBANK",
+"SABBL",--->NOT REQUIRED.
+"MNBBL",
+"CORBL",
+"SINDU",
+"GRDBL",
+"LBBL",
+"SAPDBL",
+"GBBL",
+"SADBL",
+"KSBBL",
+"JBBL",
+"MLBL",
+"MDB",
+"SHINE",
+"NABBC",
+"EDBL",
+
+===UP===
+
+
+
+SADBL
+MDB
+
+    GBBL
+    KSBBL
+    MDB
+    SADBL
+
+Rest down
+
+
+
+
+
+
+
+
+
+
+
+queries:
+for correlation and strength
+1. what if the sector is in down trend, but the stock is already in up, is it less correlation ?
+if it is, wont it be filtered before finding out the strong stock ?
+
+2. in correction and impulse, is it of trend, or the last ema cross? 
+if it is of trend, what if there is no valid last trend?
+
+answer= > its based on the trend, 
+
+
+
+
+discritionary vs systematic 5 years, 5 stock repeated character .
+
+
+in patter
+pattern bos
+trend bos
+t shift
+smt 
+p shift
+
+
+out pattern
+internal choch
+fake t shift

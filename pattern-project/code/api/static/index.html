@@ -515,6 +515,161 @@
             border-bottom: 1px solid var(--border);
         }
 
+
+        /* ── Broker Intel Modal ── */
+        #intelModal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 2000;
+            padding: 40px;
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+
+        .terminal-window {
+            width: 100%;
+            height: 100%;
+            background: #050505;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative; /* Added for absolute positioning of settings panel */
+        }
+
+        .terminal-header {
+            padding: 12px 20px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .terminal-content {
+            flex: 1;
+            padding: 24px;
+            font-family: 'DM Sans Mono', 'Fira Code', 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: var(--green);
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.6;
+            text-shadow: 0 0 5px rgba(0, 230, 118, 0.3);
+        }
+
+        .terminal-content::-webkit-scrollbar { width: 8px; }
+        .terminal-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        /* ── Date Picker Styling ── */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(0.5) sepia(1) saturate(5) hue-rotate(175deg);
+            cursor: pointer;
+            padding: 2px;
+        }
+
+        #intelDate {
+            background: rgba(45, 45, 45, 0.4);
+            color: var(--blue);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 0.7rem;
+            font-family: inherit;
+            font-weight: 700;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        #intelDate:hover, #intelDate:focus {
+            background: rgba(60, 60, 60, 0.6);
+            border-color: var(--blue);
+            box-shadow: 0 0 10px rgba(33, 150, 243, 0.2);
+        }
+
+        .intel-btn {
+            background: linear-gradient(135deg, var(--green), #00c853) !important;
+            box-shadow: 0 0 15px rgba(0, 230, 118, 0.3) !important;
+            animation: pulse-green 3s infinite;
+            margin-top: 5px;
+        }
+
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 10px rgba(0, 230, 118, 0.2); }
+            50% { box-shadow: 0 0 25px rgba(0, 230, 118, 0.5); }
+            100% { box-shadow: 0 0 10px rgba(0, 230, 118, 0.2); }
+        }
+        /* ── Streamlined Settings (Phase 25) ── */
+        .intel-settings-panel {
+            position: absolute;
+            top: 55px;
+            right: 20px;
+            background: #111418;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            width: 260px;
+            z-index: 2100;
+            display: none;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            animation: slideDownIn 0.3s ease-out;
+        }
+
+        @keyframes slideDownIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+        }
+
+        .settings-header h4 {
+            margin: 0;
+            font-size: 0.7rem;
+            color: var(--muted);
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .setting-row {
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .setting-label {
+            font-size: 0.7rem;
+            color: var(--white);
+            font-weight: 600;
+        }
+
+        .intel-input, .intel-select {
+            background: #000;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--white);
+            padding: 4px 8px;
+            font-size: 0.75rem;
+            width: 70px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        .intel-input:focus, .intel-select:focus { border-color: var(--blue); }
+        .intel-select { width: 100px; }
+
     </style>
 </head>
 <body>
@@ -583,6 +738,9 @@
         </button>
         <button class="btn btn-outline" onclick="openVisualization()">
             <span>🖼️</span> VIEW ENGINE MAP
+        </button>
+        <button class="btn btn-primary intel-btn" onclick="openIntel()">
+            <span>🕵️</span> BROKER INTELLIGENCE
         </button>
     </div>
 
@@ -700,8 +858,15 @@
                         <span class="logo-icon" style="width: 28px; height: 28px; font-size: 0.8rem;">🎯</span>
                         <h3 style="font-size: 1rem; font-weight: 900; color: var(--white); text-transform: uppercase; letter-spacing: 0.1em;">Next Move Forecast</h3>
                     </div>
-                    <div id="forecastSetup" style="font-size: 0.75rem; font-weight: 700; color: var(--muted); background: var(--bg); padding: 4px 12px; border-radius: 8px; border: 1px solid var(--border);">
-                        --
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                        <div id="forecastSetup" style="font-size: 0.75rem; font-weight: 700; color: var(--muted); background: var(--bg); padding: 4px 12px; border-radius: 8px; border: 1px solid var(--border);">
+                            --
+                        </div>
+                        <select id="forecastModeSelect" onchange="renderForecastMode()" style="background: var(--bg); color: var(--blue); border: 1px solid var(--border); font-size: 0.65rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; cursor: pointer; text-transform: uppercase; outline: none;">
+                            <option value="global">🌍 GLOBAL MODE</option>
+                            <option value="contextual" selected>📊 CONTEXTUAL (Input B Trend)</option>
+                            <option value="strict">🔒 STRICT (A & B Trends)</option>
+                        </select>
                     </div>
                 </div>
                 
@@ -753,7 +918,76 @@
     </div>
 </div>
 
+<!-- ── Broker Intel Modal ── -->
+<div id="intelModal">
+    <div class="terminal-window">
+        <div class="terminal-header">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="color: var(--green); font-weight: 800; font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase;">[ BROKERAGE INTELLIGENCE TERMINAL ]</span>
+                <span id="intelStatus" style="font-size: 0.6rem; background: rgba(0,230,118,0.1); padding: 2px 10px; border-radius: 4px; border: 1px solid var(--green); font-weight: 900;">READY</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-right: 4px;">
+                    <span style="font-size: 0.6rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em;">Discovery Date:</span>
+                    <input type="date" id="intelDate">
+                </div>
+                <button class="btn btn-outline" style="padding: 6px 10px; font-size: 0.8rem;" onclick="toggleIntelSettings()" title="Settings">⚙️</button>
+                <button class="btn btn-outline" style="padding: 6px 14px; font-size: 0.65rem; font-weight: 800; border-color: var(--blue); color: var(--blue);" onclick="runIntelAnalysis()">RUN SCAN</button>
+                <button class="btn btn-outline" style="padding: 6px 14px; font-size: 0.65rem; font-weight: 800;" onclick="refreshIntel()">REFRESH</button>
+                <button class="btn btn-outline" style="padding: 6px 14px; font-size: 0.65rem; font-weight: 800;" onclick="closeIntel()">EXIT</button>
+            </div>
+            
+            <!-- Simplified Settings Panel (Phase 25) -->
+            <div id="intelSettingsPanel" class="intel-settings-panel">
+                <div class="settings-header">
+                    <h4>Configuration</h4>
+                    <span style="cursor:pointer; color:var(--muted)" onclick="toggleIntelSettings()">×</span>
+                </div>
+
+                <div class="setting-row">
+                    <span class="setting-label">Side</span>
+                    <select id="intelSide" class="intel-select">
+                        <option value="buyer">BUYER</option>
+                        <option value="seller">SELLER</option>
+                    </select>
+                </div>
+
+                <div class="setting-row">
+                    <span class="setting-label">Brokers</span>
+                    <input type="number" id="intelBrokerCount" class="intel-input" value="5" min="1" max="50">
+                </div>
+
+                <div class="setting-row">
+                    <span class="setting-label">Stocks</span>
+                    <input type="number" id="intelStockLimit" class="intel-input" value="5" min="1" max="50">
+                </div>
+
+                <div class="setting-row">
+                    <span class="setting-label">Turnover</span>
+                    <input type="number" id="intelTurnoverLimit" class="intel-input" value="30" min="1" max="100">
+                </div>
+            </div>
+        </div>
+        <div class="terminal-content" id="intelTerminal">
+            Initializing Intelligence Feed...
+        </div>
+    </div>
+</div>
+
 <script>
+    // Initialize Broker Intel date picker to today
+    (function() {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const formatted = `${year}-${month}-${day}`;
+        window.addEventListener('DOMContentLoaded', () => {
+             const el = document.getElementById('intelDate');
+             if (el) el.value = formatted;
+        });
+    })();
+
     // ── Chart Global Setup ──
     const container = document.getElementById('chart-view');
     const chart = LightweightCharts.createChart(container, {
@@ -959,13 +1193,11 @@
         chart.timeScale().fitContent();
     }
 
+    let currentForecastData = null;
+
     async function loadForecast() {
         const panel = document.getElementById('forecast-panel');
         const setupDiv = document.getElementById('forecastSetup');
-        const outcomesDiv = document.getElementById('forecastOutcomes');
-        const gaugeBull = document.getElementById('gaugeBull');
-        const gaugeBear = document.getElementById('gaugeBear');
-        const sentimentVerdict = document.getElementById('sentimentVerdict');
 
         try {
             const sym = document.getElementById('symbolInput').value.toUpperCase();
@@ -973,61 +1205,84 @@
             const res = await fetch(`/api/stocks/${sym}/forecast${qStr}`);
             const data = await res.json();
 
-            if (data.error || !data.outcomes || data.outcomes.length === 0) {
+            if (data.error || !data.modes) {
                 panel.style.display = 'none';
                 return;
             }
 
             panel.style.display = 'block';
-            setupDiv.textContent = `Setup: ${data.current_setup} (Last: ${data.last_pattern_date})`;
-
-            // Calculate Aggregate Sentiment
-            let bullWeight = 0;
-            let bearWeight = 0;
-            data.outcomes.forEach(o => {
-                if (o.is_bullish) bullWeight += o.wilson_score;
-                else bearWeight += o.wilson_score;
-            });
-
-            const totalWeight = bullWeight + bearWeight;
-            const bullPct = totalWeight > 0 ? (bullWeight / totalWeight) * 100 : 50;
-            const bearPct = totalWeight > 0 ? (bearWeight / totalWeight) * 100 : 50;
-
-            gaugeBull.style.width = `${bullPct}%`;
-            gaugeBear.style.width = `${bearPct}%`;
-
-            if (bullPct > 60) {
-                sentimentVerdict.textContent = "STRONG BULLISH SENTIMENT";
-                sentimentVerdict.style.color = "var(--green)";
-            } else if (bearPct > 60) {
-                sentimentVerdict.textContent = "STRONG BEARISH SENTIMENT";
-                sentimentVerdict.style.color = "var(--red)";
-            } else {
-                sentimentVerdict.textContent = "NEUTRAL / MIXED SENTIMENT";
-                sentimentVerdict.style.color = "var(--muted)";
-            }
-
-            // Render Outcomes
-            const formatLabel = (l) => l ? l.replace(/_/g, ' ') : 'DIRECT';
-            outcomesDiv.innerHTML = data.outcomes.slice(0, 2).map((o, idx) => `
-                <div class="forecast-item ${idx === 0 ? 'top-pick' : ''}">
-                    <div>
-                        <div style="font-size: 0.65rem; color: var(--muted); font-weight: 800; text-transform: uppercase;">Likely Target ${idx + 1}</div>
-                        <div style="font-size: 0.9rem; font-weight: 800; color: var(--white); margin-top: 2px;">
-                            [${formatLabel(o.path)}] → ${formatLabel(o.target)}
-                        </div>
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="font-size: 1.1rem; font-weight: 900; color: ${o.is_bullish ? 'var(--green)' : 'var(--red)'};">${o.probability}%</div>
-                        <div style="font-size: 0.6rem; font-weight: 700; color: var(--muted); text-transform: uppercase;">Confidence: ${o.wilson_score}%</div>
-                    </div>
-                </div>
-            `).join('');
+            currentForecastData = data;
+            
+            setupDiv.textContent = `Setup: ${data.current_setup} (A: ${data.current_regimes.a}, B: ${data.current_regimes.b})`;
+            
+            renderForecastMode();
 
         } catch (err) {
             console.error("Forecast load error:", err);
             panel.style.display = 'none';
         }
+    }
+
+    function renderForecastMode() {
+        if (!currentForecastData) return;
+        
+        const mode = document.getElementById('forecastModeSelect').value;
+        const modeData = currentForecastData.modes[mode];
+        const outcomesDiv = document.getElementById('forecastOutcomes');
+        const gaugeBull = document.getElementById('gaugeBull');
+        const gaugeBear = document.getElementById('gaugeBear');
+        const sentimentVerdict = document.getElementById('sentimentVerdict');
+
+        if (!modeData || !modeData.outcomes || modeData.outcomes.length === 0) {
+            outcomesDiv.innerHTML = `<div style="color: var(--muted); font-size: 0.8rem; padding: 20px; text-align: center;">NO HISTORICAL MATCHES FOR THIS RESOLUTION.</div>`;
+            gaugeBull.style.width = '50%';
+            gaugeBear.style.width = '50%';
+            sentimentVerdict.textContent = "INSUFFICIENT DATA";
+            return;
+        }
+
+        // Calculate Aggregate Sentiment
+        let bullWeight = 0;
+        let bearWeight = 0;
+        modeData.outcomes.forEach(o => {
+            if (o.is_bullish) bullWeight += o.wilson_score;
+            else bearWeight += o.wilson_score;
+        });
+
+        const totalWeight = bullWeight + bearWeight;
+        const bullPct = totalWeight > 0 ? (bullWeight / totalWeight) * 100 : 50;
+        const bearPct = totalWeight > 0 ? (bearWeight / totalWeight) * 100 : 50;
+
+        gaugeBull.style.width = `${bullPct}%`;
+        gaugeBear.style.width = `${bearPct}%`;
+
+        if (bullPct > 60) {
+            sentimentVerdict.textContent = "STRONG BULLISH SENTIMENT";
+            sentimentVerdict.style.color = "var(--green)";
+        } else if (bearPct > 60) {
+            sentimentVerdict.textContent = "STRONG BEARISH SENTIMENT";
+            sentimentVerdict.style.color = "var(--red)";
+        } else {
+            sentimentVerdict.textContent = "NEUTRAL / MIXED SENTIMENT";
+            sentimentVerdict.style.color = "var(--muted)";
+        }
+
+        // Render Outcomes
+        const formatLabel = (l) => l ? l.replace(/_/g, ' ') : 'DIRECT';
+        outcomesDiv.innerHTML = modeData.outcomes.slice(0, 2).map((o, idx) => `
+            <div class="forecast-item ${idx === 0 ? 'top-pick' : ''}">
+                <div>
+                    <div style="font-size: 0.65rem; color: var(--muted); font-weight: 800; text-transform: uppercase;">Likely Target ${idx + 1}</div>
+                    <div style="font-size: 0.9rem; font-weight: 800; color: var(--white); margin-top: 2px;">
+                        ${formatLabel(o.target)}
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 1.1rem; font-weight: 900; color: ${o.is_bullish ? 'var(--green)' : 'var(--red)'};">${o.probability}%</div>
+                    <div style="font-size: 0.6rem; font-weight: 700; color: var(--muted); text-transform: uppercase;">Confidence: ${o.wilson_score}%</div>
+                </div>
+            </div>
+        `).join('');
     }
 
     async function toggleEMA() {
@@ -1353,8 +1608,126 @@
         if (e.key === 'Escape') {
             closeScorecard();
             closeVisualization();
+            closeIntel();
         }
     });
+
+    // ── Broker Intel Implementation ──
+    async function openIntel() {
+        const modal = document.getElementById('intelModal');
+        const terminal = document.getElementById('intelTerminal');
+        const status = document.getElementById('intelStatus');
+        const market = document.getElementById('marketSelect').value;
+
+        if (market !== 'nepal') {
+            alert("Brokerage Intelligence is currently only available for the NEPAL market.");
+            return;
+        }
+
+        modal.style.display = 'block';
+        terminal.innerHTML = '<span style="color: var(--blue)">[SYSTEM] Initializing Intelligence Terminal...</span>\n';
+        
+        try {
+            status.innerText = 'FETCHING LATEST...';
+            status.style.borderColor = 'var(--blue)';
+            status.style.color = 'var(--blue)';
+
+            const response = await fetch('/api/intelligence/latest-report');
+            if (response.ok) {
+                const data = await response.json();
+                terminal.innerHTML += `<span style="color: var(--muted)">[LOG] Loading cached report: ${data.filename}</span>\n\n`;
+                terminal.innerHTML += data.content;
+                status.innerText = 'STALE REPORT LOADED';
+                terminal.scrollTop = terminal.scrollHeight;
+            } else {
+                terminal.innerHTML += '<span style="color: var(--orange)">[WRN] No recent reports found. Starting fresh analysis...</span>\n';
+                runIntelAnalysis();
+            }
+        } catch (err) {
+            terminal.innerHTML += `<span style="color: var(--red)">[ERR] Connection failed: ${err.message}</span>\n`;
+        }
+    }
+
+    function toggleIntelSettings() {
+        const panel = document.getElementById('intelSettingsPanel');
+        panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+    }
+
+    async function runIntelAnalysis() {
+        const terminal = document.getElementById('intelTerminal');
+        const status = document.getElementById('intelStatus');
+        const date = document.getElementById('intelDate').value;
+        const side = document.getElementById('intelSide').value;
+        const numBrokers = document.getElementById('intelBrokerCount').value;
+        const numStocks = document.getElementById('intelStockLimit').value;
+        const turnover = document.getElementById('intelTurnoverLimit').value;
+        
+        // Hide settings if open
+        document.getElementById('intelSettingsPanel').style.display = 'none';
+
+        terminal.innerHTML = `<span style="color: var(--blue)">[EXE] Triggering Floor-sheet Microstructure Scan${date ? ' for ' + date : ''}...</span>\n`;
+        terminal.innerHTML += `<span style="color: var(--muted)">[CFG] Side: ${side.toUpperCase()} | Brokers: ${numBrokers} | Depth: ${numStocks} | Turnover: Top ${turnover}</span>\n`;
+        terminal.innerHTML += '<span style="color: var(--muted)">[LOG] This process takes ~20s. Capturing session data...</span>\n';
+        terminal.scrollTop = terminal.scrollHeight;
+        
+        status.innerText = 'ANALYZING...';
+        status.style.borderColor = 'var(--orange)';
+        status.style.color = 'var(--orange)';
+
+        try {
+            let url = `/api/intelligence/broker-analysis?side=${side}&num_brokers=${numBrokers}&num_stocks=${numStocks}&turnover=${turnover}`;
+            if (date) url += `&date=${date}`;
+            
+            const response = await fetch(url, { method: 'POST' });
+            const data = await response.json();
+            
+            if (response.ok) {
+                terminal.innerHTML += '<span style="color: var(--green)">[OK] Analysis Complete. Fetching final report...</span>\n';
+                terminal.scrollTop = terminal.scrollHeight;
+                refreshIntel();
+            } else {
+                terminal.innerHTML += `<span style="color: var(--red)">[ERR] ${data.detail || 'Unknown Error'}</span>\n`;
+                terminal.scrollTop = terminal.scrollHeight;
+                status.innerText = 'ERROR';
+            }
+        } catch (err) {
+            terminal.innerHTML += `<span style="color: var(--red)">[ERR] ${err.message}</span>\n`;
+            terminal.scrollTop = terminal.scrollHeight;
+            status.innerText = 'CONNECTION LOST';
+        }
+    }
+
+    async function refreshIntel() {
+        const terminal = document.getElementById('intelTerminal');
+        const status = document.getElementById('intelStatus');
+        const date = document.getElementById('intelDate').value;
+        
+        try {
+            let url = '/api/intelligence/latest-report';
+            if (date) url += `?date=${date}`;
+            
+            const response = await fetch(url);
+            if (response.ok) {
+                const data = await response.json();
+                terminal.innerHTML = `<span style="color: var(--muted)">[LOG] Displaying: ${data.filename}</span>\n\n`;
+                terminal.innerHTML += data.content;
+                status.innerText = 'LIVE REPORT';
+                status.style.borderColor = 'var(--green)';
+                status.style.color = 'var(--green)';
+                terminal.scrollTop = 0;
+            } else {
+                const data = await response.json();
+                terminal.innerHTML += `<span style="color: var(--orange)">[WRN] ${data.detail || 'Report not found.'}</span>\n`;
+            }
+        } catch (err) {
+            terminal.innerHTML += `<span style="color: var(--red)">[ERR] Refresh failed: ${err.message}</span>\n`;
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+    }
+
+    function closeIntel() {
+        document.getElementById('intelModal').style.display = 'none';
+    }
 </script>
 </body>
 </html>

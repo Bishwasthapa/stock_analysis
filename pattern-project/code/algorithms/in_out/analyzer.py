@@ -157,6 +157,90 @@ def find_all_valid_patterns(rows: List[dict]) -> List[dict]:
     return all_patterns
 
 
+def calculate_regimes(rows: List[dict]) -> List[str]:
+    """
+    Implements the TBOS/T-Shift algorithm to identify market regimes.
+    Returns a list of 'STRONG' or 'WEAK' labels for each swing point.
+    """
+    regimes = ["WEAK"] * len(rows)
+    if not rows:
+        return regimes
+
+    # Initial state
+    last_high = -1.0
+    last_low = -1.0
+    
+    # We need at least one high and one low to start
+    for i, r in enumerate(rows):
+        p = float(r["price"])
+        if r["type"].upper() == "HIGH" and last_high < 0:
+            last_high = p
+        if r["type"].upper() == "LOW" and last_low < 0:
+            last_low = p
+        if last_high >= 0 and last_low >= 0:
+            start_idx = i + 1
+            break
+    else:
+        return regimes # Not enough structure to analyze
+
+    # Track current trend based on EMA (implied by the sequence if not provided, 
+    # but here we rely on the rows traversing). 
+    # The algorithm is state-based.
+    
+    # To properly identify Uptrend vs Downtrend traversal, 
+    # we look at the trend_type of the current point's pattern context.
+    # However, since we are traversing row by row, we can infer trend from 
+    # the sequence of Highs and Lows.
+    
+    for i in range(start_idx, len(rows)):
+        r = rows[i]
+        p = float(r["price"])
+        t = r["type"].upper()
+        
+        # We assume the 'mode' (Uptrend/Downtrend) is provided by the EMA context
+        # In current rows, 'trend_type' is 'UPTREND' or 'DOWNTREND'
+        trend = r.get("trend_type", "UPTREND").upper()
+        
+        if trend == "UPTREND":
+            # Scenario A: Structural Failure (The "Shift")
+            if t == "LOW" and p < last_low:
+                regimes[i] = "WEAK"
+                # Logic: last_high is the new T-SHIFT (marker), p is new T-BOS
+                # We update our anchors for the next comparison
+                last_low = p
+            # Scenario B: Structural Continuation (The "BOS")
+            elif t == "HIGH" and p > last_high:
+                if i > 0 and rows[i-1]["type"].upper() == "LOW" and float(rows[i-1]["price"]) >= last_low:
+                    # Low was held (Scenario B)
+                    regimes[i] = "STRONG"
+                    last_high = p
+                else:
+                    # If we don't know for sure, stay WEAK or keep last
+                    regimes[i] = "WEAK"
+                    last_high = p
+            else:
+                regimes[i] = regimes[i-1] if i > 0 else "WEAK"
+
+        else: # DOWNTREND
+            # Scenario A: Structural Failure (The "Shift")
+            if t == "HIGH" and p > last_high:
+                regimes[i] = "WEAK"
+                last_high = p
+            # Scenario B: Structural Continuation (The "BOS")
+            elif t == "LOW" and p < last_low:
+                if i > 0 and rows[i-1]["type"].upper() == "HIGH" and float(rows[i-1]["price"]) <= last_high:
+                    # High was held (Scenario B)
+                    regimes[i] = "STRONG"
+                    last_low = p
+                else:
+                    regimes[i] = "WEAK"
+                    last_low = p
+            else:
+                regimes[i] = regimes[i-1] if i > 0 else "WEAK"
+                
+    return regimes
+
+
 def analyze(
     rows: List[dict],
     out_dir: Path,
@@ -166,9 +250,15 @@ def analyze(
     min_context_count: int,
     stable_threshold: float,
     strong_swing_min_move_pct: float,
+    symbol: str = "UNKNOWN"
 ) -> Dict[str, int]:
     tokens = [r["point_label"] for r in rows]
     dates = [r.get("date", "") for r in rows]
+    regimes = calculate_regimes(rows)
+    # Store regime back in rows for easy access later
+    for i, r in enumerate(rows):
+        r["regime"] = regimes[i]
+    
     token_counts = Counter(tokens)
     total_tokens = len(tokens)
 
@@ -708,6 +798,7 @@ def analyze(
             {
                 "pattern_token": token,
                 "trend_type": trend,
+                "regime": regimes[i+3], # Use the regime at the completion of the pattern
                 "idx_0": i,
                 "idx_1": i + 1,
                 "idx_2": i + 2,
@@ -813,6 +904,8 @@ def analyze(
             iterative_transitions.append({
                 "a": p_a,
                 "b": p_b,
+                "a_regime": p_a["regime"],
+                "b_regime": p_b["regime"],
                 "path": path_label,
                 "target": target_label,
                 "peak_profit": peak_profit * 100.0,
@@ -897,67 +990,107 @@ def analyze(
 
     # --- 10) EXPORT LIVE FORECAST ---
     # Current State = Last 2 non-intersecting completed patterns
-    print(f"DEBUG: Completed patterns count = {len(completed_patterns)}")
     if len(completed_patterns) >= 2:
-        p_b = completed_patterns[-1]
-        # Find the latest p_a that doesn't intersect p_b
-        p_a = None
-        for i in range(len(completed_patterns) - 2, -1, -1):
-            cand_a = completed_patterns[i]
-            if cand_a["idx_3"] <= p_b["idx_0"]:
-                p_a = cand_a
+        last_b = completed_patterns[-1]
+        
+        # Find the last A that doesn't intersect with last B
+        last_a = None
+        for i in range(len(completed_patterns)-2, -1, -1):
+            if completed_patterns[i]["idx_3"] <= last_b["idx_0"]:
+                last_a = completed_patterns[i]
                 break
         
-        print(f"DEBUG: p_a found = {p_a is not None}")
-        if p_a:
-            ctx = (p_a["pattern_token"], p_b["pattern_token"])
-            print(f"DEBUG: Current Context = {ctx}")
-            matches = setup_groups.get(ctx, [])
+        if last_a and last_b:
+            cur_a_token = last_a["pattern_token"]
+            cur_b_token = last_b["pattern_token"]
+            cur_a_regime = last_a["regime"]
+            cur_b_regime = last_b["regime"]
             
-            forecast = {
-                "symbol": out_dir.parent.name, # Guess from path
-                "current_setup": f"{ctx[0]} + {ctx[1]}",
-                "last_pattern_date": p_b["date_3_label"],
-                "total_historical_matches": len(matches),
-                "outcomes": []
-            }
-            
-            if matches:
-                # Group by structural target for cleaner UI display
-                target_map = {}
-                for m in matches:
-                    key = (m["path"], m["target"])
-                    if key not in target_map:
-                        target_map[key] = []
-                    target_map[key].append(m)
+            def get_mode_stats(matches: List[dict]):
+                if not matches:
+                    return []
                 
-                for key, trans_list in target_map.items():
-                    path, target = key
-                    count = len(trans_list)
-                    raw_prob = (count / len(matches)) * 100
+                total = len(matches)
+                outcomes_dict = {}
+                for m in matches:
+                    key = m["target"]
+                    if m["path"]:
+                        key = f"[{m['path']}] -> {m['target']}"
                     
-                    # Profit machine for THIS specific path->target combo
+                    if key not in outcomes_dict:
+                        outcomes_dict[key] = {
+                            "target": key,
+                            "count": 0,
+                            "is_bullish": "UP" in key,
+                            "peak_profits": []
+                        }
+                    outcomes_dict[key]["count"] += 1
+                    outcomes_dict[key]["peak_profits"].append(m["peak_profit"])
+
+                res = []
+                for key, data in outcomes_dict.items():
+                    cnt = data["count"]
+                    prob = (cnt / total) * 100.0
+                    w_score = _wilson_score(cnt, total) * 100.0
+                    
+                    # Profit machine for this specific target
+                    profits = data["peak_profits"]
                     pm = {}
-                    for thresh in [5, 10, 15, 20]:
-                        hits = sum(1 for t in trans_list if t["peak_profit"] >= thresh)
-                        pm[f"at_least_{thresh}"] = round((hits / count) * 100, 1)
+                    for t in [5, 10, 15, 20]:
+                        pm_cnt = sum(1 for p in profits if p >= t)
+                        pm[f"at_least_{t}"] = (pm_cnt / cnt) * 100.0 if cnt > 0 else 0.0
                     
-                    forecast["outcomes"].append({
-                        "path": path,
-                        "target": target,
-                        "count": count,
-                        "probability": round(raw_prob, 1),
-                        "wilson_score": round(_wilson_score(count, len(matches)) * 100, 1),
+                    res.append({
+                        "target": data["target"],
+                        "count": cnt,
+                        "probability": round(prob, 1),
+                        "wilson_score": round(w_score, 1),
                         "profit_machine": pm,
-                        "is_bullish": "UP" in target
+                        "is_bullish": data["is_bullish"]
                     })
                 
-                # Sort outcomes by Wilson Score
-                forecast["outcomes"].sort(key=lambda x: x["wilson_score"], reverse=True)
+                res.sort(key=lambda x: (-x["wilson_score"], -x["probability"]))
+                return res
+
+            # Mode 1: Global (A + B)
+            matches_global = [t for t in iterative_transitions if 
+                             t["a"]["pattern_token"] == cur_a_token and 
+                             t["b"]["pattern_token"] == cur_b_token]
+            
+            # Mode 2: Contextual (A + B + Regime B)
+            matches_contextual = [t for t in matches_global if t["b_regime"] == cur_b_regime]
+            
+            # Mode 3: Strict (A + Regime A + B + Regime B)
+            matches_strict = [t for t in matches_contextual if t["a_regime"] == cur_a_regime]
+            
+            forecast_data = {
+                "symbol": symbol,
+                "current_setup": f"{cur_a_token} + {cur_b_token}",
+                "current_regimes": {
+                    "a": cur_a_regime,
+                    "b": cur_b_regime
+                },
+                "last_pattern_date": last_b["date_3_label"],
+                "modes": {
+                    "global": {
+                        "count": len(matches_global),
+                        "outcomes": get_mode_stats(matches_global)
+                    },
+                    "contextual": {
+                        "count": len(matches_contextual),
+                        "outcomes": get_mode_stats(matches_contextual)
+                    },
+                    "strict": {
+                        "count": len(matches_strict),
+                        "outcomes": get_mode_stats(matches_strict)
+                    }
+                }
+            }
             
             import json
-            with open(csv_dir / "current_forecast.json", "w") as f_json:
-                json.dump(forecast, f_json, indent=2)
+            with (csv_dir / "current_forecast.json").open("w", encoding="utf-8") as f_json:
+                json.dump(forecast_data, f_json, indent=2)
+            print(f"Exported live forecast to {csv_dir}/current_forecast.json")
 
 
 
@@ -1057,6 +1190,7 @@ def main() -> None:
         min_context_count=args.min_context_count,
         stable_threshold=args.stable_threshold,
         strong_swing_min_move_pct=args.strong_swing_min_move_pct,
+        symbol=symbol
     )
 
     print("\nTransition Pattern Analysis Complete")
