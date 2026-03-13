@@ -331,8 +331,8 @@ def plot_highs_lows_after_cross(
         if is_seed: label_text = f"SEED: {label_text}"
             
         ax.text(point['date'], y_pos, label_text,
-                fontsize=7, color='#c9d1d9', 
-                ha='center', va=va, rotation=90, fontweight='bold', alpha=0.9)
+                fontsize=7.5, color=pt_color if is_seed else '#e2e2e2', 
+                ha='center', va=va, rotation=90, fontweight='bold', alpha=1.0)
 
     ax.set_xlabel('Date', fontsize=14, color='#c9d1d9')
     ax.set_ylabel('Price', fontsize=14, color='#c9d1d9')

@@ -307,7 +307,7 @@ class ResultExporter:
     @staticmethod
     def plot_classification(swings: List[SwingPoint], 
                            classification: Dict[int, Tuple[str, Optional[int], str, str]],
-                           symbol: str, output_path: str) -> None:
+                           symbol: str, output_path: str, show_roles: bool = False) -> None:
         """Visualize the IN/OUT classification with pattern role labels."""
         try:
             import matplotlib.pyplot as plt
@@ -339,8 +339,8 @@ class ResultExporter:
         def _gp(idx): s = swing_by_index.get(idx); return s.price if s else float('nan')
         def _gt(idx): s = swing_by_index.get(idx); return s.type.upper() if s else ''
 
-        # Thin zigzag base
-        ax.plot(dates, prices, color='#95a5a6', linewidth=1.5, alpha=0.5, zorder=1)
+        # Thick white zigzag base for high contrast
+        ax.plot(dates, prices, color='#ffffff', linewidth=1.8, alpha=0.9, zorder=1)
 
         # Dots + role badges
         for swing in swings:
@@ -355,26 +355,38 @@ class ResultExporter:
             cls, role, trend_type, label = classification[swing.index]
             color = COLOR.get(label, '#7f8c8d')
             
-            # Draw dot
-            ax.scatter(x, swing.price, color=color, s=180, zorder=4,
-                       alpha=0.6, edgecolors='white', linewidth=1)
+            # Draw dot - smaller (80 instead of 180) for clarity
+            ax.scatter(x, swing.price, color=color, s=80, zorder=4,
+                       alpha=0.7, edgecolors='#0d1117', linewidth=0.8)
 
-            # Draw role badge
-            y = swing.price + price_range * 0.05
-            ax.text(x, y, str(role), fontsize=7.5, fontweight='bold',
-                    ha='center', va='bottom', color='white', zorder=6,
-                    bbox=dict(boxstyle='round,pad=0.18', facecolor=color,
-                              alpha=0.88, edgecolor='none'))
+            # Optional role badges - Circular, positioned opposite to date labels
+            if show_roles:
+                is_high = (swing.type.upper() == 'HIGH')
+                role_dist = price_range * 0.04
+                role_y = swing.price - role_dist if is_high else swing.price + role_dist
+                role_va = 'top' if is_high else 'bottom'
+                
+                ax.text(x, role_y, f"{role}", fontsize=8, fontweight='bold',
+                        ha='center', va=role_va, color='white', zorder=6,
+                        bbox=dict(boxstyle='circle,pad=0.2', facecolor=color,
+                                alpha=0.9, edgecolor='none'))
 
 
-        # Date labels: 45° rotated, alternating offset below dot
+        # Vertical Date labels: 4-level staggered offsets to virtually eliminate overlap.
+        # Highs above, Lows below for maximal clarity.
         for idx_e, swing in enumerate(swings):
             x = date_by_index.get(swing.index, pd.to_datetime(swing.date))
-            y_off = price_range * (0.03 if idx_e % 2 == 0 else 0.055)
-            ax.text(x, swing.price - y_off, x.strftime('%d %b'),
-                    fontsize=7.5, ha='right', va='top', rotation=40,
-                    color='#8b949e', alpha=0.9,
-                    fontweight='bold')
+            
+            label_offsets = [0.02, 0.05, 0.08, 0.11]
+            dist = price_range * label_offsets[idx_e % 4]
+            
+            is_high = (swing.type.upper() == 'HIGH')
+            y_pos = swing.price + dist if is_high else swing.price - dist
+            va = 'bottom' if is_high else 'top'
+            
+            ax.text(x, y_pos, x.strftime('%d %b %y'),
+                    fontsize=7.5, color='#e2e2e2', ha='center', va=va,
+                    rotation=90, fontweight='bold', alpha=1.0)
 
         ax.set_xlabel('Year', fontsize=12, color='#c9d1d9')
         ax.set_ylabel('Price', fontsize=12, color='#c9d1d9')
@@ -405,12 +417,13 @@ class ResultExporter:
 
 
 
-def analyze_trend_pattern(symbol: str, zigzag_csv: str, output_csv: str, date_cutoff: Optional[str] = None):
+def analyze_trend_pattern(symbol: str, zigzag_csv: str, output_csv: str, date_cutoff: Optional[str] = None, show_roles: bool = False):
     """
     Main entry point: run the trend-based pattern detection pipeline.
     
     Args:
         date_cutoff: ISO date string (YYYY-MM-DD). Only swing points on/after this date are analyzed.
+        show_roles: Whether to display pattern role labels (0, 1, 2, 3) in the visualization.
     """
     print(f"\n{'='*60}")
     print(f"Trend-Based Pattern Detection: {symbol}")
@@ -446,7 +459,7 @@ def analyze_trend_pattern(symbol: str, zigzag_csv: str, output_csv: str, date_cu
     print("5. Generating classification visualization...")
     viz_path = output_csv.replace("/csv/", "/png/").replace(".csv", "_visualization.png")
     os.makedirs(os.path.dirname(viz_path), exist_ok=True)
-    ResultExporter.plot_classification(swings, classification, symbol, viz_path)
+    ResultExporter.plot_classification(swings, classification, symbol, viz_path, show_roles=show_roles)
     
     print(f"\n✓ Trend-based pattern detection complete!\n")
 
@@ -464,6 +477,7 @@ if __name__ == '__main__':
     _parser.add_argument("--output-csv", default=None)
     _parser.add_argument("--years", type=int, default=None,
                          help="Limit analysis to last N years (e.g. 5)")
+    _parser.add_argument("--show-roles", action="store_true", help="Show pattern role labels (0, 1, 2, 3)")
     _args = _parser.parse_args()
 
     _symbol = _args.symbol.upper()
@@ -477,4 +491,4 @@ if __name__ == '__main__':
         _cutoff = (datetime.today() - timedelta(days=_args.years * 365)).strftime('%Y-%m-%d')
         print(f"  Filtering data to last {_args.years} years (from {_cutoff})")
 
-    analyze_trend_pattern(_symbol, _zigzag_csv, _output_csv, date_cutoff=_cutoff)
+    analyze_trend_pattern(_symbol, _zigzag_csv, _output_csv, date_cutoff=_cutoff, show_roles=_args.show_roles)
