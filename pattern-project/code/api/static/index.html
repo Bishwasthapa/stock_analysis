@@ -760,12 +760,14 @@
         <button class="btn btn-outline" id="emaToggle" onclick="toggleEMA()">
             <span>〰</span> VIEW EMA 9/18
         </button>
+        <!-- 
         <button class="btn btn-outline" id="structToggle" onclick="toggleStructure()">
             <span>🗺️</span> STRUCTURAL MAP
         </button>
         <button class="btn btn-outline" onclick="openScorecard()">
             <span>📊</span> STRATEGY SCORECARD
         </button>
+        -->
         <button class="btn btn-outline" onclick="openVisualization()">
             <span>🖼️</span> VIEW ENGINE MAP
         </button>
@@ -1088,8 +1090,8 @@
 
     let ema9Series, ema18Series;
     let emaVisible = false;
-    let structInUpSeries, structInDownSeries, structOutSeries;
-    let structVisible = false;
+    let structInUpSeries, structInDownSeries, structOutSeries, structPathSeries;
+    let structVisible = true; // Enabled by default now for the path
 
     // ── App Logic ──
     const STRATEGY_VARIANTS = {
@@ -1211,10 +1213,7 @@
                 const pRes = await fetch(`/api/stocks/${sym}/patterns${qStr}`);
                 const patterns = await pRes.json();
                 
-                // Sort by date ascending (required by LightweightCharts)
-                patterns.sort((a, b) => a.date.localeCompare(b.date));
-                
-                // Markers on chart are disabled — counts and badge still shown below
+                // Markers on chart are disabled as we move to a "PATH" visualization
                 candleSeries.setMarkers([]);
 
                 // Signal counts
@@ -1222,12 +1221,14 @@
                 document.getElementById('bearCount').innerText = patterns.filter(p => p.cross_type === 'bear').length;
 
                 // Latest Trend Badge
+                /*
                 if (patterns.length > 0) {
                     const lastP = patterns[patterns.length - 1];
                     const badge = document.getElementById('trendBadge');
                     badge.style.display = 'flex';
                     document.getElementById('trendText').innerText = `LATEST: ${lastP.cross_type.toUpperCase()} (${lastP.type.toUpperCase()})`;
                 }
+                */
             } catch (e) {
                 console.error(`[Markers] Failed to load markers for ${sym}:`, e);
                 candleSeries.setMarkers([]);
@@ -1378,7 +1379,8 @@
         if (structInUpSeries) chart.removeSeries(structInUpSeries);
         if (structInDownSeries) chart.removeSeries(structInDownSeries);
         if (structOutSeries) chart.removeSeries(structOutSeries);
-        structInUpSeries = null; structInDownSeries = null; structOutSeries = null;
+        if (structPathSeries) chart.removeSeries(structPathSeries);
+        structInUpSeries = null; structInDownSeries = null; structOutSeries = null; structPathSeries = null;
     }
 
     async function fetchEMA(sym, years) {
@@ -1398,54 +1400,35 @@
 
     async function fetchStructure(sym, years) {
         const qStr = getQueryString(years);
-        const res = await fetch(`/api/stocks/${sym}/structure${qStr}`);
+        const res = await fetch(`/api/stocks/${sym}/zigzag_data${qStr}`);
         if (!res.ok) { clearStructure(); return; }
         const data = await res.json();
         
         clearStructure();
         
-        // Setup series
-        structInUpSeries = chart.addLineSeries({ 
-            color: '#00e676', lineWidth: 4, title: 'STRUCTURAL UPTREND',
+        // Simple white dotted path series
+        structPathSeries = chart.addLineSeries({ 
+            color: '#ffffff', // Opaque white for max contrast
+            lineWidth: 1, 
+            lineStyle: 2, // Dotted
+            title: 'CROSSOVER PATH',
             lineType: 0,
-        });
-        structInDownSeries = chart.addLineSeries({ 
-            color: '#ff5252', lineWidth: 4, title: 'STRUCTURAL DOWNTREND',
-            lineType: 0,
-        });
-        structOutSeries = chart.addLineSeries({ 
-            color: '#ffa726', lineWidth: 2, title: 'TRANSITION / NOISE',
-            lineStyle: 2, // Dashed
+            priceLineVisible: false,
         });
 
-        const greenData = [], redData = [], steelData = [];
+        const pathData = data.map(p => ({ time: p.date, value: p.price }));
         
-        for (let i = 0; i < data.length - 1; i++) {
-            const p1 = data[i];
-            const p2 = data[i+1];
-            const item1 = { time: p1.date, value: p1.price };
-            const item2 = { time: p2.date, value: p2.price };
-            
-            if (p2.classification === 'IN') {
-                if (p2.trend_type === 'UPTREND') greenData.push(item1, item2);
-                else redData.push(item1, item2);
-            } else {
-                steelData.push(item1, item2);
-            }
-        }
-
         const clean = (arr) => {
             const seen = new Set();
             return arr.filter(o => {
-                if (seen.has(o.time)) return false;
-                seen.add(o.time);
+                const t = typeof o.time === 'string' ? o.time : o.time.toString();
+                if (seen.has(t)) return false;
+                seen.add(t);
                 return true;
             }).sort((a,b) => a.time.localeCompare(b.time));
         };
         
-        structInUpSeries.setData(clean(greenData));
-        structInDownSeries.setData(clean(redData));
-        structOutSeries.setData(clean(steelData));
+        structPathSeries.setData(clean(pathData));
     }
 
 

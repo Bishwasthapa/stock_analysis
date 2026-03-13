@@ -425,6 +425,29 @@ def get_visualization(symbol: str, market: str = Query("nepal"), strategy: str =
     return FileResponse(viz_path)
 
 
+@app.get("/api/stocks/{symbol}/zigzag_data")
+def get_zigzag_data(symbol: str, market: str = Query("nepal"), strategy: str = Query("in_out"), years: Optional[int] = Query(None)):
+    """Returns the raw zigzag high/low points from CSV."""
+    symbol = symbol.upper()
+    csv_path = get_result_dir(market, symbol, strategy) / "csv" / "highs_lows_pattern_9_18.csv"
+
+    if not os.path.exists(csv_path):
+        raise HTTPException(status_code=404, detail=f"ZigZag data not found for {symbol}.")
+
+    try:
+        df = pd.read_csv(csv_path)
+        if years:
+            cutoff = pd.Timestamp.now() - pd.DateOffset(years=years)
+            df['date'] = pd.to_datetime(df['date'])
+            df = df[df['date'] >= cutoff]
+            df['date'] = df['date'].dt.strftime('%Y-%m-%d')
+        
+        df = df.fillna("")
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/stocks/{symbol}/zigzag")
 def get_zigzag_viz(symbol: str, market: str = Query("nepal"), strategy: str = Query("in_out")):
     """Serves the algorithmic ZigZag (Highs/Lows) visualization image."""
