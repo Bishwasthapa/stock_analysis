@@ -448,13 +448,19 @@
             max-height: calc(95vh - 100px);
             object-fit: contain;
             cursor: zoom-in;
-            transition: transform 0.2s ease;
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+            -webkit-user-drag: none;
         }
         .viz-img.zoomed {
             width: auto;
             max-width: none;
             max-height: none;
-            cursor: zoom-out;
+            cursor: grab;
+            transition: transform 0.05s linear; /* Faster response for panning */
+        }
+        .viz-img.zoomed:active {
+            cursor: grabbing;
         }
 
         /* ── Live Forecast Card ── */
@@ -513,6 +519,30 @@
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--border);
+        }
+        .viz-tabs {
+            display: flex;
+            gap: 15px;
+            margin: 0 30px;
+            flex: 1;
+        }
+        .viz-tab {
+            background: transparent;
+            border: none;
+            color: var(--muted);
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+        }
+        .viz-tab.active {
+            color: var(--blue);
+            border-bottom-color: var(--blue);
+        }
+        .viz-tab:hover {
+            color: var(--white);
         }
 
 
@@ -711,7 +741,7 @@
     </div>
 
     <div class="field-group">
-        <div class="field-label">History Context: <span id="yearsVal">5 Years</span></div>
+        <div class="field-label">History Context: <span id="yearsVal">All Data</span></div>
         <div class="range-wrap">
             <input type="range" id="yearsRange" min="1" max="15" value="15">
             <div class="range-labels">
@@ -832,6 +862,10 @@
     <div class="viz-content">
         <div class="viz-header">
             <h3 style="color: var(--white); letter-spacing: 0.05em;">ENGINE VISUALIZATION: <span id="vizSymbol" style="color: var(--blue)">SCB</span></h3>
+            <div class="viz-tabs">
+                <button class="viz-tab active" onclick="switchViz('pattern')">Pattern View</button>
+                <button class="viz-tab" onclick="switchViz('zigzag')">ZigZag View</button>
+            </div>
             <button class="close-btn" onclick="closeVisualization()">×</button>
         </div>
         <div style="overflow: auto; flex: 1; display: flex; justify-content: center; align-items: center; background: #000;">
@@ -1415,26 +1449,91 @@
     }
 
 
-    // ── Visualization Modal ──
+    // ── Visualization Modal Logic ──
+    let isPanning = false;
+    let startX, startY;
+    let translateX = 0, translateY = 0;
+
+    let currentVizMode = 'pattern';
+
     function openVisualization() {
         const sym = document.getElementById('symbolInput').value.toUpperCase();
         const qStr = getQueryString(null, { t: Date.now() });
         document.getElementById('vizSymbol').innerText = sym;
         const img = document.getElementById('vizImage');
-        img.src = ""; // Clear old image
-        img.classList.remove('zoomed'); // Reset zoom state
+        
+        // Reset state
+        currentVizMode = 'pattern';
+        document.querySelectorAll('.viz-tab').forEach(t => t.classList.remove('active'));
+        document.querySelector('.viz-tab[onclick*="pattern"]').classList.add('active');
+        
+        img.src = "";
+        img.classList.remove('zoomed');
+        translateX = 0;
+        translateY = 0;
+        img.style.transform = `translate(0px, 0px)`;
+        
         img.src = `/api/stocks/${sym}/viz${qStr}`;
         document.getElementById('viz-overlay').style.display = 'flex';
         document.body.style.overflow = 'hidden';
     }
 
-    function toggleZoom(img) {
-        img.classList.toggle('zoomed');
+    function switchViz(mode) {
+        const sym = document.getElementById('symbolInput').value.toUpperCase();
+        const qStr = getQueryString(null, { t: Date.now() });
+        const img = document.getElementById('vizImage');
+        
+        currentVizMode = mode;
+        
+        // Update UI
+        document.querySelectorAll('.viz-tab').forEach(t => {
+            t.classList.remove('active');
+            if (t.innerText.toLowerCase().includes(mode)) t.classList.add('active');
+        });
+        
+        // Load appropriate endpoint
+        const endpoint = mode === 'zigzag' ? 'zigzag' : 'viz';
+        img.src = `/api/stocks/${sym}/${endpoint}${qStr}`;
     }
+
+    function toggleZoom(img) {
+        const isZoomed = img.classList.toggle('zoomed');
+        if (!isZoomed) {
+            // Reset position on zoom out
+            translateX = 0;
+            translateY = 0;
+            img.style.transform = `translate(0px, 0px)`;
+        }
+    }
+
+    // Panning helper
+    const vizImg = document.getElementById('vizImage');
+    vizImg.addEventListener('mousedown', (e) => {
+        if (!vizImg.classList.contains('zoomed')) return;
+        isPanning = true;
+        startX = e.clientX - translateX;
+        startY = e.clientY - translateY;
+        vizImg.style.transition = 'none'; // Instant response while dragging
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (!isPanning) return;
+        e.preventDefault();
+        translateX = e.clientX - startX;
+        translateY = e.clientY - startY;
+        vizImg.style.transform = `translate(${translateX}px, ${translateY}px)`;
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (!isPanning) return;
+        isPanning = false;
+        vizImg.style.transition = 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
+    });
 
     function closeVisualization() {
         document.getElementById('viz-overlay').style.display = 'none';
         document.body.style.overflow = 'auto';
+        isPanning = false;
     }
 
     function closeVizOnBackdrop(e) {

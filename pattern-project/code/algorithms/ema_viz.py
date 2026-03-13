@@ -177,13 +177,15 @@ def extract_zigzag_points(df: pd.DataFrame) -> list:
         # bearish first crossover => start from pre-crossover HIGH
         # bullish first crossover => start from pre-crossover LOW
         initial_type = 'high' if first_cross_val == -1 else 'low'
-        init_idx = _nearest_local_extreme_before(first_cross_idx, initial_type)
-        if init_idx is None:
-            if initial_type == 'high':
-                init_idx = int(pre_window['High'].idxmax())
-            else:
-                init_idx = int(pre_window['Low'].idxmin())
+        
+        # Use simple absolute extreme for the seed to ensure we start from the true origin
+        if initial_type == 'high':
+            init_idx = int(pre_window['High'].idxmax())
+        else:
+            init_idx = int(pre_window['Low'].idxmin())
+            
         points.append({
+
             'index': init_idx,
             'date': df.loc[init_idx, 'Date'],
             'date_label': df.loc[init_idx, 'Date'].strftime('%d %b %Y') if hasattr(df.loc[init_idx, 'Date'], 'strftime') else str(df.loc[init_idx, 'Date']),
@@ -301,23 +303,36 @@ def plot_highs_lows_after_cross(
     dates = [p['date'] for p in points_sorted]
     prices = [p['price'] for p in points_sorted]
 
-    # Draw the zigzag line
-    ax.plot(dates, prices, label='Price Action Zigzag', color='#8b949e',
-            linewidth=2, marker='o', markersize=8, alpha=0.7)
+    # Draw the zigzag line - White and opaque for clarity
+    ax.plot(dates, prices, label='Price Action Zigzag', color='#ffffff',
+            linewidth=1.8, marker='o', markersize=4, alpha=0.9, zorder=3)
 
     price_range = max(prices) - min(prices) if len(prices) > 1 else 1
-    # Color code points: bull cross = neon green, bear cross = bright red
+    # Plot points: Uniform neutral color for identification
     for idx_e, point in enumerate(points_sorted):
-        color = '#00e676' if point['cross_type'] == 'bull' else '#ef5350'
-        ax.scatter(point['date'], point['price'], color=color, s=220,
-                   zorder=5, alpha=0.85, edgecolors='white', linewidth=1)
+        is_seed = (point['cross_type'] == 'seed')
+        # Use white/gold consistently to avoid red/green clutter
+        pt_color = '#ffeb3b' if is_seed else '#ffffff'
         
-        # Consistent "nice" label style: muted, rotated, offset below dot
+        # Identification dots
+        ax.scatter(point['date'], point['price'], color=pt_color, s=70,
+                   zorder=5, alpha=0.9, edgecolors='#0d1117', linewidth=0.8)
+        
+        # Improved labeling: vertical dates, high points above, low points below
         d_obj = pd.to_datetime(point['date'])
-        y_off = price_range * (0.04 if idx_e % 2 == 0 else 0.07)
-        ax.text(point['date'], point['price'] - y_off, d_obj.strftime('%d %b'),
-                fontsize=7.5, color='#8b949e', ha='right', va='top', 
-                rotation=40, fontweight='bold', alpha=0.9)
+        label_offsets = [0.02, 0.05, 0.08, 0.11]
+        dist = price_range * label_offsets[idx_e % 4]
+        
+        is_high = (point['type'] == 'high')
+        y_pos = point['price'] + dist if is_high else point['price'] - dist
+        va = 'bottom' if is_high else 'top'
+        
+        label_text = d_obj.strftime('%d %b %y')
+        if is_seed: label_text = f"SEED: {label_text}"
+            
+        ax.text(point['date'], y_pos, label_text,
+                fontsize=7, color='#c9d1d9', 
+                ha='center', va=va, rotation=90, fontweight='bold', alpha=0.9)
 
     ax.set_xlabel('Date', fontsize=14, color='#c9d1d9')
     ax.set_ylabel('Price', fontsize=14, color='#c9d1d9')
@@ -406,6 +421,7 @@ if __name__ == '__main__':
     parser.add_argument("--market", default="nepal", help="Market name for path organization")
     parser.add_argument("--strategy", default="in_out", help="Strategy identifier (e.g. in_out, structural_v2, strategy1)")
     parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--years", type=int, default=None, help="Limit history context (years)")
     args = parser.parse_args()
 
     symbol = args.symbol.upper()
@@ -421,6 +437,12 @@ if __name__ == '__main__':
             refresh_mode=args.refresh,
             max_stale_days=args.max_stale_days
         )
+        
+        if args.years:
+            from datetime import datetime as _dt, timedelta as _td
+            cutoff = _dt.today() - _td(days=args.years * 365)
+            df = df[df['Date'] >= cutoff].reset_index(drop=True)
+            print(f"  Filtering to last {args.years} years of history...")
         print(f"  Loaded {len(df)} rows")
         
         print(f"Calculating {short_span}/{long_span} EMA crossovers (threshold: {args.threshold})...")

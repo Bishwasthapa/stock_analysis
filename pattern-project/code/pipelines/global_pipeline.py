@@ -47,20 +47,22 @@ def main() -> None:
     py = sys.executable
 
     # 1. EMA Visualization & Trend Detection
-    run_cmd(
-        [
-            py,
-            "code/algorithms/ema_viz.py",
-            symbol,
-            "--market", market,
-            "--strategy", strategy,
-            "--ema-short", str(args.ema_short),
-            "--ema-long", str(args.ema_long),
-            "--threshold", str(args.threshold),
-            "--refresh", args.refresh,
-            "--max-stale-days", str(args.max_stale_days),
-        ]
-    )
+    ema_cmd = [
+        py,
+        "code/algorithms/ema_viz.py",
+        symbol,
+        "--market", market,
+        "--strategy", strategy,
+        "--ema-short", str(args.ema_short),
+        "--ema-long", str(args.ema_long),
+        "--threshold", str(args.threshold),
+        "--refresh", args.refresh,
+        "--max-stale-days", str(args.max_stale_days),
+    ]
+    if args.years is not None:
+        ema_cmd += ["--years", str(args.years)]
+    
+    run_cmd(ema_cmd)
 
     # 2. IN/OUT Pattern Detection
     detector_cmd = [
@@ -86,6 +88,7 @@ def main() -> None:
 
     run_cmd(detector_cmd)
     run_cmd(analyzer_cmd)
+
 
     print(f"\n✓ Pattern pipeline complete for {symbol} ({market})")
     print(f"  Results: results/{market}/{symbol}/{strategy}/")

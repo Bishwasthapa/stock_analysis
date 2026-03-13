@@ -3,10 +3,11 @@ import re
 import json
 import pandas as pd
 import requests
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 import numpy as np
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 class NepalStockService:
     """
@@ -47,9 +48,23 @@ class NepalStockService:
             if latest_date is None:
                 should_fetch = True
             else:
-                age = (datetime.now(UTC).date() - latest_date).days
+                nepal_now = self._get_nepal_now()
+                today = nepal_now.date()
+
+                # If we already have today's bar, treat data as fresh for the rest
+                # of the day regardless of market hours (no re-fetch once post-close
+                # data has been captured).
+                if latest_date >= today:
+                    age = 0
+                else:
+                    expected_trading_date = self._latest_expected_trading_date(today)
+                    if expected_trading_date is None:
+                        age = (datetime.now(UTC).date() - latest_date).days
+                    else:
+                        age = (expected_trading_date - latest_date).days
+
                 if age > self.max_stale_days:
-                    print(f"  Local data stale ({age} days old). Attempting refresh...")
+                    print(f"  Local data stale relative to NEPSE trading calendar ({age} days). Attempting refresh...")
                     should_fetch = True
 
         if should_fetch:
@@ -113,6 +128,35 @@ class NepalStockService:
                     d = pd.to_datetime(df[col], errors='coerce').dropna()
                     if not d.empty: return d.max().date()
         except: pass
+        return None
+
+    # --- NEPSE trading calendar helpers ---
+
+    def _get_nepal_now(self) -> datetime:
+        """Return current time in Nepal local timezone."""
+        return datetime.now(ZoneInfo("Asia/Kathmandu"))
+
+    def _is_trading_day(self, d) -> bool:
+        """
+        NEPSE trading days are Sunday–Thursday.
+        Python weekday(): Monday=0 ... Sunday=6
+        """
+        wd = d.weekday()
+        # Sunday (6), Monday (0), Tuesday (1), Wednesday (2), Thursday (3)
+        return wd in (6, 0, 1, 2, 3)
+
+    def _latest_expected_trading_date(self, today_local):
+        """
+        Given today's local date, return the most recent expected trading date.
+        This is 'today' if today is a trading day; otherwise the last prior
+        trading day. Used so that Friday/Saturday (and holidays) do not cause
+        unnecessary refresh attempts when we already hold the latest session.
+        """
+        d = today_local
+        for _ in range(7):
+            if self._is_trading_day(d):
+                return d
+            d = d - timedelta(days=1)
         return None
 
     def _normalize_dataframe(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:

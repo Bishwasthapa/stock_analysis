@@ -415,12 +415,25 @@ def get_structure_data(symbol: str, market: str = Query("nepal"), strategy: str 
 
 @app.get("/api/stocks/{symbol}/viz")
 def get_visualization(symbol: str, market: str = Query("nepal"), strategy: str = Query("in_out")):
-    """Serves the static pattern visualization image."""
+    """Serves the primary trend classification visualization image."""
     symbol = symbol.upper()
     viz_path = get_result_dir(market, symbol, strategy) / "png" / f"{strategy}_pattern_9_18_visualization.png"
 
     if not os.path.exists(viz_path):
         raise HTTPException(status_code=404, detail=f"Visualization not found for {symbol}.")
+
+    return FileResponse(viz_path)
+
+
+@app.get("/api/stocks/{symbol}/zigzag")
+def get_zigzag_viz(symbol: str, market: str = Query("nepal"), strategy: str = Query("in_out")):
+    """Serves the algorithmic ZigZag (Highs/Lows) visualization image."""
+    symbol = symbol.upper()
+    # Path format: highs_lows_pattern_9_18.png
+    viz_path = get_result_dir(market, symbol, strategy) / "png" / "highs_lows_pattern_9_18.png"
+
+    if not os.path.exists(viz_path):
+        raise HTTPException(status_code=404, detail=f"ZigZag visualization not found for {symbol}.")
 
     return FileResponse(viz_path)
 
