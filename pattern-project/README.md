@@ -57,3 +57,4 @@ Combos in the scorecard are sorted by **Wilson Score descending** — the most s
 
 ---
 *For technical details on the pattern detection logic, see [ALGORITHM.md](file:///mnt/personal/stock/own_for_analysis/pattern-project/ALGORITHM.md).*
+*For details on tracing Smart Money signals, see [BROKER_INTELLIGENCE.md](file:///mnt/personal/stock/own_for_analysis/pattern-project/code/broker_analysis/BROKER_INTELLIGENCE.md).*

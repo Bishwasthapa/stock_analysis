@@ -945,6 +945,14 @@
                 </div>
 
                 <div class="setting-row">
+                    <span class="setting-label">Scan Mode</span>
+                    <select id="intelMode" class="intel-select">
+                        <option value="micro" selected>MICROSTRUCTURE</option>
+                        <option value="dominance">ABSORPTION</option>
+                    </select>
+                </div>
+
+                <div class="setting-row">
                     <span class="setting-label">Side</span>
                     <select id="intelSide" class="intel-select">
                         <option value="buyer">BUYER</option>
@@ -965,6 +973,19 @@
                 <div class="setting-row">
                     <span class="setting-label">Turnover</span>
                     <input type="number" id="intelTurnoverLimit" class="intel-input" value="30" min="1" max="100">
+                </div>
+
+                <div class="setting-row" id="specificBrokerRow">
+                    <span class="setting-label">Specific Broker</span>
+                    <input type="text" id="intelSpecificBrokers" class="intel-input" placeholder="44,58" style="width: 100px;">
+                </div>
+
+                <div class="setting-row">
+                    <span class="setting-label">Aggregate Stocks</span>
+                    <label class="switch">
+                        <input type="checkbox" id="intelAggregateToggle" checked>
+                        <span class="slider"></span>
+                    </label>
                 </div>
             </div>
         </div>
@@ -1658,15 +1679,21 @@
         const status = document.getElementById('intelStatus');
         const date = document.getElementById('intelDate').value;
         const side = document.getElementById('intelSide').value;
-        const numBrokers = document.getElementById('intelBrokerCount').value;
-        const numStocks = document.getElementById('intelStockLimit').value;
-        const turnover = document.getElementById('intelTurnoverLimit').value;
+        const numBrokers = parseInt(document.getElementById('intelBrokerCount').value) || 5;
+        const numStocks = parseInt(document.getElementById('intelStockLimit').value) || 5;
+        const turnover = parseInt(document.getElementById('intelTurnoverLimit').value) || 30;
+        const mode = document.getElementById('intelMode').value;
+        const aggregate = document.getElementById('intelAggregateToggle').checked;
+        const specificBrokers = document.getElementById('intelSpecificBrokers').value.trim();
         
         // Hide settings if open
         document.getElementById('intelSettingsPanel').style.display = 'none';
 
-        terminal.innerHTML = `<span style="color: var(--blue)">[EXE] Triggering Floor-sheet Microstructure Scan${date ? ' for ' + date : ''}...</span>\n`;
-        terminal.innerHTML += `<span style="color: var(--muted)">[CFG] Side: ${side.toUpperCase()} | Brokers: ${numBrokers} | Depth: ${numStocks} | Turnover: Top ${turnover}</span>\n`;
+        terminal.innerHTML = `<span style="color: var(--blue)">[EXE] Triggering ${mode === 'dominance' ? 'Absorption Scan' : 'Microstructure Scan'}${date ? ' for ' + date : ''}...</span>\n`;
+        terminal.innerHTML += `<span style="color: var(--muted)">[CFG] Side: ${side.toUpperCase()} | Mode: ${mode.toUpperCase()} | Depth: ${numStocks} | Agg: ${aggregate ? 'YES' : 'NO'} | Turnover: Top ${turnover}</span>\n`;
+        if (specificBrokers) {
+            terminal.innerHTML += `<span style="color: var(--blue)">[CFG] Targeting Specific Brokers: ${specificBrokers}</span>\n`;
+        }
         terminal.innerHTML += '<span style="color: var(--muted)">[LOG] This process takes ~20s. Capturing session data...</span>\n';
         terminal.scrollTop = terminal.scrollHeight;
         
@@ -1675,8 +1702,18 @@
         status.style.color = 'var(--orange)';
 
         try {
-            let url = `/api/intelligence/broker-analysis?side=${side}&num_brokers=${numBrokers}&num_stocks=${numStocks}&turnover=${turnover}`;
-            if (date) url += `&date=${date}`;
+            const params = new URLSearchParams({
+                side: side,
+                num_brokers: numBrokers,
+                num_stocks: numStocks,
+                turnover: turnover,
+                mode: mode,
+                aggregate: aggregate
+            });
+            if (date) params.append('date', date);
+            if (specificBrokers) params.append('specific_brokers', specificBrokers);
+            
+            const url = `/api/intelligence/broker-analysis?${params.toString()}`;
             
             const response = await fetch(url, { method: 'POST' });
             const data = await response.json();
@@ -1701,12 +1738,17 @@
         const terminal = document.getElementById('intelTerminal');
         const status = document.getElementById('intelStatus');
         const date = document.getElementById('intelDate').value;
+        const mode = document.getElementById('intelMode').value;
         
         try {
             let url = '/api/intelligence/latest-report';
-            if (date) url += `?date=${date}`;
+            const params = new URLSearchParams();
+            if (date) params.append('date', date);
+            if (mode) params.append('mode', mode);
             
-            const response = await fetch(url);
+            const fullUrl = url + '?' + params.toString();
+            
+            const response = await fetch(fullUrl);
             if (response.ok) {
                 const data = await response.json();
                 terminal.innerHTML = `<span style="color: var(--muted)">[LOG] Displaying: ${data.filename}</span>\n\n`;

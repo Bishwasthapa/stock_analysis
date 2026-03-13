@@ -3,4 +3,4 @@
 cd "$(dirname "$0")"
 export PYTHONPATH=.
 echo "🚀 Starting Nepal Stock Pattern Hub at http://localhost:8000"
-./venv/bin/uvicorn code.api.main:app --host 0.0.0.0 --port 8000
+./venv/bin/uvicorn code.api.main:app --host 0.0.0.0 --port 8000 &> /tmp/portal_debug.log

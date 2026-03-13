@@ -456,7 +456,10 @@ def trigger_broker_analysis(
     num_brokers: int = Query(5), 
     num_stocks: int = Query(5),
     turnover: int = Query(30),
-    date: str = Query(None)
+    date: str = Query(None),
+    mode: str = Query("micro"),
+    aggregate: bool = Query(True),
+    specific_brokers: str = Query(None)
 ):
     """Triggers the Brokerage Intelligence analysis script with dynamic settings."""
     project_root = Path(__file__).resolve().parent.parent.parent
@@ -465,20 +468,35 @@ def trigger_broker_analysis(
     # Pass all dynamic parameters to analyze_floorsheet.py
     cmd = [
         str(runner_script), "analyze_floorsheet.py", 
-        f"--num-brokers={num_brokers}",
-        f"--limit={num_stocks}",
-        f"--turnover={turnover}"
+        "--num-brokers", str(num_brokers),
+        "--limit", str(num_stocks),
+        "--turnover", str(turnover),
+        "--mode", mode
     ]
+    
+    # Handle Boolean Aggregation
+    if aggregate:
+        cmd.append("--add")
+    else:
+        cmd.append("--no-add")
+        
+    # Handle Specific Brokers
+    if specific_brokers:
+        cmd.append("--broker")
+        cmd.append(specific_brokers)
+        
     if side == "seller":
         cmd.append("--seller")
     else:
         cmd.append("--buyer")
         
     if date:
-        cmd.append(f"--discovery-date={date}")
+        cmd.append("--discovery-date")
+        cmd.append(date)
 
     try:
         # Run and wait for completion (it takes ~10-20s for scraping)
+        print(f"🚀 [API] Executing: {' '.join(cmd)}")
         env = os.environ.copy()
         # Use /bin/bash explicitly to ensure POSIX compliance with '.' command in the runner
         result = subprocess.run(["/bin/bash"] + cmd, env=env, capture_output=True, text=True, check=True, cwd=str(project_root))
@@ -494,22 +512,35 @@ def trigger_broker_analysis(
 
 
 @app.get("/api/intelligence/latest-report")
-def get_latest_broker_report(date: str = Query(None)):
-    """Retrieves the content of the most recent brokerage analysis report, optionally filtered by date."""
+def get_latest_broker_report(date: str = Query(None), mode: str = Query(None)):
+    """Retrieves the content of the most recent brokerage analysis report, optionally filtered by date and mode."""
     project_root = Path(__file__).resolve().parent.parent.parent
     reports_dir = project_root / "results" / "broker_analysis"
     
     if not reports_dir.exists():
          raise HTTPException(status_code=404, detail="No reports directory found.")
          
-    # Find files. If date is provided, filter by report-{date}_*.txt
-    pattern = f"report-{date}_*.txt" if date else "report-*.txt"
-    report_files = glob.glob(str(reports_dir / pattern))
-    
-    if not report_files:
-        raise HTTPException(status_code=404, detail=f"No broker reports found {'for date ' + date if date else ''}.")
+    # If mode is specified, specifically look for that mode
+    if mode:
+        pattern = f"report-{mode.upper()}-*{date}_*.txt" if date else f"report-{mode.upper()}-*.txt"
+        target_files = glob.glob(str(reports_dir / pattern))
+    else:
+        # Legacy/General: Prioritize Dominance reports, then fall back to Micro or generic
+        dom_pattern = f"report-DOMINANCE-*{date}_*.txt" if date else "report-DOMINANCE-*.txt"
+        gen_pattern = f"report-*{date}_*.txt" if date else "report-*.txt"
         
-    latest_report = max(report_files, key=os.path.getmtime)
+        dom_files = glob.glob(str(reports_dir / dom_pattern))
+        all_files = glob.glob(str(reports_dir / gen_pattern))
+        
+        # Target files: Dominance first, then anything else
+        target_files = dom_files if dom_files else all_files
+    
+    if not target_files:
+        mode_str = f" in {mode} mode" if mode else ""
+        date_str = f" for date {date}" if date else ""
+        raise HTTPException(status_code=404, detail=f"No broker reports found{mode_str}{date_str}.")
+        
+    latest_report = max(target_files, key=os.path.getmtime)
     
     try:
         with open(latest_report, "r") as f:
