@@ -27,15 +27,20 @@ Generate dark-mode EMA crossover and Zigzag charts for local data.
 python code/algorithms/ema_viz.py NICA --years 2
 ```
 
-### 4. Web Dashboard (Interactive Chart Portal)
-Start the local API server, then open the browser at `http://localhost:8000`.
-```bash
-# From the project root
-nohup venv/bin/uvicorn code.api.main:app --host 0.0.0.0 --port 8000 >> /tmp/api.log 2>&1 &
-```
-> **Note:** The server is **not** persistent across reboots — run the command above each time to start it.  
-> To stop it: run `./stop_portal.sh`
+### 📈 Web Dashboard (Interactive Chart Portal)
 
+The system includes a premium, dark-mode interactive dashboard based on Lightweight Charts:
+- **TradingView Experience**: Smooth zooming, panning, and crosshair interactions.
+- **OHLCV Hover Legend**: Real-time display of Open, High, Low, Close, and Volume data on hover.
+- **Structural Path Visualization**: High-contrast white dotted line connecting algorithmic swing points.
+- **Noise Highlighting**: Red circles for "OUT" (transitional noise) and Orange squares for "INVALID" (structural breaks).
+- **Strategy Scorecard**: Full transparency into sequence probabilities and technical rules.
+
+### Start the Portal
+```bash
+./start_portal.sh
+```
+Open your browser at `http://localhost:8000`.
 
 ## 📂 Key Folders
 - `data/nepal/`: Raw split-adjusted CSVs.
@@ -46,15 +51,11 @@ nohup venv/bin/uvicorn code.api.main:app --host 0.0.0.0 --port 8000 >> /tmp/api.
 
 ## 📐 Statistical Methods
 
-The **Strategy Scorecard** uses two techniques to surface reliable patterns over lucky-but-rare ones:
-
-| Method | Purpose |
-|---|---|
-| **Wilson Score (95% CI)** | Ranks combos by their *lower confidence bound* — penalises 1/1=100% while rewarding 5/7=71%. Used as the `TRUST` score. |
-| **Laplace Smoothing** | Adjusts raw probability with a small prior `(count+1)/(total+2)` to avoid 100% from single observations. Shown as `PROB`. |
-
-Combos in the scorecard are sorted by **Wilson Score descending** — the most statistically reliable patterns appear first.
+The **Strategy Scorecard** uses two techniques to surface reliable patterns:
+- **Wilson Score (95% CI)**: Ranks combos by their *lower confidence bound* to reward consistency over luck.
+- **Laplace Smoothing**: Avoids 100% probabilities from single observations by adding a small prior.
 
 ---
-*For technical details on the pattern detection logic, see [ALGORITHM.md](file:///mnt/personal/stock/own_for_analysis/pattern-project/ALGORITHM.md).*
-*For details on tracing Smart Money signals, see [BROKER_INTELLIGENCE.md](file:///mnt/personal/stock/own_for_analysis/pattern-project/code/broker_analysis/BROKER_INTELLIGENCE.md).*
+- **[ALGORITHM.md](file:///mnt/personal/stock/own_for_analysis/pattern-project/ALGORITHM.md)**: Technical details on pattern detection.
+- **[DEPLOYMENT_GUIDE.md](file:///mnt/personal/stock/own_for_analysis/pattern-project/deployment_guide.md)**: Steps for hosting on a private server.
+- **[BROKER_INTELLIGENCE.md](file:///mnt/personal/stock/own_for_analysis/pattern-project/code/broker_analysis/BROKER_INTELLIGENCE.md)**: tracing Smart Money signals.
