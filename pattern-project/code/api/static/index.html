@@ -760,14 +760,12 @@
         <button class="btn btn-outline" id="emaToggle" onclick="toggleEMA()">
             <span>〰</span> VIEW EMA 9/18
         </button>
-        <!-- 
         <button class="btn btn-outline" id="structToggle" onclick="toggleStructure()">
             <span>🗺️</span> STRUCTURAL MAP
         </button>
         <button class="btn btn-outline" onclick="openScorecard()">
             <span>📊</span> STRATEGY SCORECARD
         </button>
-        -->
         <button class="btn btn-outline" onclick="openVisualization()">
             <span>🖼️</span> VIEW ENGINE MAP
         </button>
@@ -1435,7 +1433,7 @@
             .filter(p => p.classification === 'OUT')
             .map(p => ({
                 time: p.date,
-                position: 'inBar',
+                position: p.type === 'high' ? 'aboveBar' : 'belowBar',
                 color: '#ff5252',
                 shape: 'circle',
                 size: 0.5,
