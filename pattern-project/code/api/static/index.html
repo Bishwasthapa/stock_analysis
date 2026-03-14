@@ -1429,16 +1429,20 @@
         structPathSeries.setData(clean(pathData));
 
         // Highlight OUT points with red circles on the candlestick series
+        // Highlight OUT points and INVALID points
         const markers = data
-            .filter(p => p.classification === 'OUT')
-            .map(p => ({
-                time: p.date,
-                position: p.type === 'high' ? 'aboveBar' : 'belowBar',
-                color: '#ff5252',
-                shape: 'circle',
-                size: 0.5,
-                text: ''
-            }));
+            .filter(p => p.classification === 'OUT' || !p.classification || p.classification === '')
+            .map(p => {
+                const isOut = p.classification === 'OUT';
+                return {
+                    time: p.date,
+                    position: p.type === 'high' ? 'aboveBar' : 'belowBar',
+                    color: isOut ? '#ff5252' : '#ffa726', // Red for OUT, Orange for INVALID
+                    shape: isOut ? 'circle' : 'square',
+                    size: isOut ? 0.5 : 0.4,
+                    text: isOut ? '' : 'X'
+                };
+            });
         
         // Only set these if there are OUT points found
         if (markers.length > 0) {
