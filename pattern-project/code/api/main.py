@@ -436,6 +436,15 @@ def get_zigzag_data(symbol: str, market: str = Query("nepal"), strategy: str = Q
 
     try:
         df = pd.read_csv(csv_path)
+        
+        # Merge with classification data if available
+        in_out_path = get_result_dir(market, symbol, strategy) / "csv" / "in_out_pattern_9_18.csv"
+        if os.path.exists(in_out_path):
+            io_df = pd.read_csv(in_out_path)
+            # Use index for reliable merge (both files should have parallel rows for the same swings)
+            if 'index' in io_df.columns and 'index' in df.columns:
+                df = df.merge(io_df[['index', 'classification', 'trend_type']], on='index', how='left')
+        
         if years:
             cutoff = pd.Timestamp.now() - pd.DateOffset(years=years)
             df['date'] = pd.to_datetime(df['date'])

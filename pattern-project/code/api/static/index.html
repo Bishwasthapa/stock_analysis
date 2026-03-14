@@ -1429,6 +1429,27 @@
         };
         
         structPathSeries.setData(clean(pathData));
+
+        // Highlight OUT points with red circles on the candlestick series
+        const markers = data
+            .filter(p => p.classification === 'OUT')
+            .map(p => ({
+                time: p.date,
+                position: 'inBar',
+                color: '#ff5252',
+                shape: 'circle',
+                size: 0.5,
+                text: ''
+            }));
+        
+        // Only set these if there are OUT points found
+        if (markers.length > 0) {
+            // We use candleSeries for markers. Note: This might conflict with pattern markers 
+            // if both are enabled, but usually OUT points are useful in this structural view.
+            candleSeries.setMarkers(markers);
+        } else {
+            candleSeries.setMarkers([]);
+        }
     }
 
 
