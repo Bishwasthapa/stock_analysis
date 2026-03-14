@@ -848,7 +848,17 @@
         <div id="chart-overlay">
             <div class="badge" id="trendBadge" style="display: none;">
                 <span class="badge-icon">📈</span>
-                <span class="badge-text" id="trendText">UPTREND CONFIRMED</span>
+                <span class="badge-text" id="trendText">LATEST: BULL</span>
+            </div>
+            
+            <div class="badge" id="ohlcv-legend">
+                <div style="display: flex; gap: 15px; font-family: 'DM Sans Mono', monospace; font-size: 0.8rem; font-weight: 800;">
+                    <div style="color: var(--muted)">O <span style="color: var(--white)" id="legOpen">—</span></div>
+                    <div style="color: var(--muted)">H <span style="color: var(--white)" id="legHigh">—</span></div>
+                    <div style="color: var(--muted)">L <span style="color: var(--white)" id="legLow">—</span></div>
+                    <div style="color: var(--muted)">C <span style="color: var(--white)" id="legClose">—</span></div>
+                    <div style="color: var(--muted)">V <span style="color: var(--white)" id="legVolume">—</span></div>
+                </div>
             </div>
         </div>
 
@@ -1091,6 +1101,49 @@
     let structInUpSeries, structInDownSeries, structOutSeries, structPathSeries;
     let structVisible = true; // Enabled by default now for the path
 
+    // ── OHLCV Hover Logic ──
+    chart.subscribeCrosshairMove(param => {
+        if (!param.time || param.point.x < 0 || param.point.x > container.clientWidth || param.point.y < 0 || param.point.y > container.clientHeight) {
+            // Revert to latest data if not hovering
+            updateLegend(ohlcvData[ohlcvData.length - 1]);
+            return;
+        }
+
+        const data = param.seriesData.get(candleSeries);
+        const volumeData = param.seriesData.get(volumeSeries);
+        
+        if (data) {
+            updateLegend({
+                Open: data.open,
+                High: data.high,
+                Low: data.low,
+                Close: data.close,
+                Volume: volumeData ? volumeData.value : 0
+            });
+        }
+    });
+
+    let ohlcvData = []; // To keep latest data reference
+
+    function formatVol(vol) {
+        if (!vol) return '—';
+        if (vol >= 1000000) return (vol / 1000000).toFixed(2) + 'M';
+        if (vol >= 1000) return (vol / 1000).toFixed(1) + 'K';
+        return vol.toString();
+    }
+
+    function updateLegend(data) {
+        if (!data) return;
+        document.getElementById('legOpen').innerText = data.Open.toFixed(1);
+        document.getElementById('legHigh').innerText = data.High.toFixed(1);
+        document.getElementById('legLow').innerText = data.Low.toFixed(1);
+        document.getElementById('legClose').innerText = data.Close.toFixed(1);
+        document.getElementById('legVolume').innerText = formatVol(data.Volume);
+        
+        const priceChange = document.getElementById('legClose');
+        priceChange.style.color = data.Close >= data.Open ? 'var(--green)' : 'var(--red)';
+    }
+
     // ── App Logic ──
     const STRATEGY_VARIANTS = {
         standard: [
@@ -1193,8 +1246,12 @@
         volumeSeries.setData(volumes);
 
         // Header Updates
+        ohlcvData = ohlcv; // Update global reference for hover legend
         const last = ohlcv[ohlcv.length - 1];
         const prev = ohlcv[ohlcv.length - 2];
+        
+        updateLegend(last); // Set initial legend values
+
         if (last && prev) {
             const currency = market === 'nepal' ? 'Rs.' : '$';
             document.getElementById('lastPrice').innerText = `${currency} ${last.Close.toFixed(1)}`;
